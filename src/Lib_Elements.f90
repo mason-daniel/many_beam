@@ -9,7 +9,7 @@
 !*      version history
 !*      0.0.1           Sept 2024       First version
 !*
-
+        use Lib_DebyeFunction
         use iso_fortran_env
         implicit none
         private
@@ -48,6 +48,17 @@
                        ,118.71d0,132.9054520d0,137.33d0,138.9055d0,140.116d0,157.2d0,178.49d0,180.9479d0,183.84d0,186.207d0,190.2d0,192.22d0    &
                        ,195.08d0,196.96657d0,204.383d0,207d0,232.038d0  /)
 
+
+    !   https://www.knowledgedoor.com/2/elements_handbook/debye_temperature.html room temperature limits                   
+    !   except Oxygen DOI:  10.1007/BF00628329 Fagerstroem & Holis Hallet J Low Temp Phys 1:3 (1969)
+        real(kind=real64),dimension(NELNAMES),parameter             ::      DEBYETEMP = (/              &
+                                    448,1031,1550,104,155,330,390,692,100                               &
+                                   ,230,380,390,424,363,373,386,345,310,237,240,403                     &
+                                   ,275, 59,148,214,250,260,377,415,350,275,221,221                     &
+                                   ,254, 43,116,135,138,155,213,225,312,275,400,228                     &
+                                   ,225,178, 96,87, 100                                 /)
+                          
+
     !---    lattice parameter (pm)       
     !   https://periodictable.com/Properties/A/LatticeConstants.html                                   
         real(kind=real64),dimension(NELNAMES),parameter             ::      ELA0 = (/                                                           &
@@ -79,6 +90,7 @@
         public          ::      DebyeWallerFactor
         public          ::      getLatticeConstant
         public          ::      getElementMass
+        public          ::      getDebyeTemperature
         public          ::      getrealDoyleTurner_a
         public          ::      getrealDoyleTurner_b
         public          ::      getscatDoyleTurner_a
@@ -89,7 +101,15 @@
             module procedure    getElementMass0
         end interface
 
+        interface       getDebyeTemperature
+            module procedure    getDebyeTemperature0
+        end interface
 
+        interface       getLatticeConstant
+            module procedure    getLatticeConstant0
+            module procedure    getLatticeConstant1
+        end interface
+        
 
         interface getLatticeName
             module procedure        getLatticeName0
@@ -171,7 +191,23 @@
 
 
 
-        pure function getLatticeConstant(el) result(a0)
+        pure real(kind=real64) function getDebyeTemperature0(el) 
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      return debye temp recorded for element
+            character(len=*),intent(in)         ::      el
+            integer         ::      ii
+            ii = whichElement(el)
+            if (ii /= 0) then
+                getDebyeTemperature0 = DEBYETEMP(ii)
+            else
+                getDebyeTemperature0 = 0.0d0
+            end if
+            return
+        end function getDebyeTemperature0
+
+
+
+        pure function getLatticeConstant0(el) result(a0)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      return lattice constants for element in A
             character(len=*),intent(in)         ::      el
@@ -184,7 +220,25 @@
                 a0 = 1.0d0
             end if
             return
-        end function getLatticeConstant
+        end function getLatticeConstant0
+
+        pure function getLatticeConstant1(el,frac) result(a0)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      return lattice constants for elements in A
+    !*      assuming Vegards law
+            character(len=*),dimension(:),intent(in)        ::      el
+            real(kind=real64),dimension(:),intent(in)       ::      frac
+            real(kind=real64),dimension(3)      ::      a0  
+            integer         ::      ii
+
+            a0 = 0
+            do ii = 1,size(el)
+                a0 = a0 + frac(ii) * getLatticeConstant0(el(ii))
+            end do     
+            a0 = a0 / sum(frac(1:size(el)))
+            
+            return
+        end function getLatticeConstant1
 
 
         real(kind=real64) function DebyeWallerFactor(el,T,latt)
@@ -294,6 +348,8 @@
             else
                 el_uc = trim(convertUpperCase(el))
             end if
+
+        !---    whichElement() but for the particular group of elements here
             ee = 0
             do ii = 1,NELEMENTS
                 if (trim(el_uc) == trim(convertUpperCase(ELEMENT(ii)) )) then
@@ -303,9 +359,17 @@
             end do
 
             if (ee==0) then
+
+
+            !---    have we got the debye temp? we can approximate.
+                if (whichElement(el_uc) /= 0) then
+                    print *,"Lib_Elements::DebyeWallerFactor info - using Willis & Pryor (1975) approx"
+                    DebyeWallerFactor = DebyeWallerFactor_approx( T, getElementMass(el_uc), getDebyeTemperature(el_uc) )
+                    return
+                end if
                 print *,"Lib_Elements::DebyeWallerFactor error - did not recognise element """//trim(el_uc)//""""
-                print *,"   tabulated only for"
-                print *,(""""//trim(ELEMENT(ii))//""" ",ii=1,NELEMENTS)
+
+
             end if
 
             DebyeWallerFactor = 0    

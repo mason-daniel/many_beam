@@ -32,6 +32,7 @@
         use Lib_ComputePhaseFactor
         use Lib_RotationMatrices
         use Lib_ManyBeam
+        use Lib_Dashboard
 #ifdef MPI
         use mpi_f08
 #endif
@@ -61,10 +62,11 @@
         real(kind=real64),dimension(3)      ::      a0_in = 0.0             !   indicative lattice parameter (A)
         integer                             ::      nPrec = 1               !   precession angles
         real(kind=real64)                   ::      precAngle = 0.003d0     !   precession angle (rad)
-        logical                             ::      opPng = .true.          !   should we automatically output a png file
-        logical                             ::      columnar = .true.       !   use columnar approximation
-        logical                             ::      lossy = .false.         !   use imaginary parts of crystal structure factor
-        logical                             ::      twobeam = .false.       !   two-beam mode
+        !logical                             ::      opPng = .true.          !   should we automatically output a png file
+        logical                             ::      attset = .false.        
+        ! logical                             ::      columnar = .true.       !   use columnar approximation
+        ! logical                             ::      lossy = .false.         !   use imaginary parts of crystal structure factor
+        ! logical                             ::      twobeam = .false.       !   two-beam mode
         integer,dimension(:),allocatable    ::      hkl                     !   the g-vector for the aperture. allocatable because its either hkl or hjkl 
         logical                             ::      yflip = .true.          !   Right-hand rule for png output - y=0 at bottom.
         logical                             ::      pngBlur = .true.        !   blurring radius sigma/a
@@ -72,7 +74,7 @@
         real(kind=real64)                   ::      n_g = 1                 !   which reflection to make bright
         logical                             ::      df = .true.             !   find dark field        
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
-        logical                             ::      opDiffPatt = .true.     !   output diffraction pattern
+        !logical                             ::      opDiffPatt = .true.     !   output diffraction pattern
         !logical                             ::      gauge = .false.         !   apply gauge transform
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
         real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
@@ -80,7 +82,9 @@
         integer                             ::      zlayers = 50            !   number of z layers to compute rho & x* grad x
         logical                             ::      dbg = .false.   
         real(kind=real64),dimension(9)      ::      Rmat = (/ 1,0,0,0,1,0,0,0,1 /)
+        real(kind=real64),dimension(9)      ::      Umat = (/ 1,0,0,0,1,0,0,0,1 /)
         logical                             ::      specifiedRmat = .false.
+        logical                             ::      specifiedUmat = .false.
 
     !---    physical variables
         type(IntegrateManyBeams)            ::      imb
@@ -123,7 +127,23 @@
         call MPI_COMM_SIZE(MPI_COMM_WORLD, nProcs, ierror)
         call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierror)
 #endif              
-        
+
+
+
+!******************************************************************************    
+!*    
+!*      MAJOR RUNTIME MODES
+!*    
+!*    
+!******************************************************************************    
+            
+        call setState(COLUMNAR,.true.)
+        call setState(LOSSY,.false.)
+        call setState(TWOBEAM,.false.)
+        call setState(GAUGETRANSFORM,.false.)
+        call setState(OPXYZ,.false.)
+        call setState(OPPNG,.true.)
+        call setState(OPDIFF,.true.)
 
 
 !******************************************************************************    
@@ -163,6 +183,7 @@
         call get( cla,"ntilt",ntilt,LIB_CLA_OPTIONAL,"      number of foil tilt angles considered",CLA_MICRO )           
         call get( cla,"tweak",tweak,LIB_CLA_OPTIONAL,"      fine-tune tweak angle as fraction of theta",CLA_MICRO )           
         ii=9; call get( cla,"R",Rmat,ii,LIB_CLA_OPTIONAL,"          specify tilt matrix",CLA_MICRO )           
+        ii=9; call get( cla,"U",Umat,ii,LIB_CLA_OPTIONAL,"          specify crystal orientation in input file",CLA_MICRO )           
 
 
         ii=0; dat = LIB_CLA_NODEFAULT_I; call get( cla,"g",dat,ii ,LIB_CLA_REQUIRED,"            g-vector reflection to output",CLA_DIFF )
@@ -176,20 +197,51 @@
         df = (n_g /= 1.0d0)
         call get( cla,"dark",df ,LIB_CLA_OPTIONAL,"       tweak foil tilt to find close dark field",CLA_DIFF )                 
 
-        call get( cla,"col",columnar ,LIB_CLA_OPTIONAL,"        use columnar approximation",CLA_CALC )                 
-        call get( cla,"loss",lossy ,LIB_CLA_OPTIONAL,"       use complex crystal structure factor for inelastic electron scattering",CLA_CALC )    
-        call get( cla,"2",twobeam ,LIB_CLA_OPTIONAL,"          compute in two beam approximation",CLA_CALC )                 
+    !---    set major runtime attributes        
+        attset = isState(COLUMNAR)
+        call get( cla,"col",attset ,LIB_CLA_OPTIONAL,"        use columnar approximation",CLA_CALC )                 
+        if (hasArgument(cla,"col")) call setState(COLUMNAR,attset)
+
+        attset = isState(LOSSY)
+        call get( cla,"loss",attset ,LIB_CLA_OPTIONAL,"       use complex crystal structure factor for inelastic electron scattering",CLA_CALC )    
+        if (hasArgument(cla,"loss")) call setState(LOSSY,attset)
+
+        attset = isState(TWOBEAM)
+        call get( cla,"2",attset ,LIB_CLA_OPTIONAL,"          compute in two beam approximation",CLA_CALC )                 
+        if (hasArgument(cla,"2")) call setState(TWOBEAM,attset)
+
+
         call get( cla,"imin",imin,LIB_CLA_OPTIONAL,"       intensity threshold for beam selection",CLA_CALC )         
         call get( cla,"zlayers",zlayers,LIB_CLA_OPTIONAL,"    number of z-layers in rho calculation block",CLA_CALC )         
-        call get( cla,"gauge",gaugeTransform,LIB_CLA_OPTIONAL,"      use gauge transform",CLA_CALC )
+
+        
+        attset = isState(GAUGETRANSFORM)
+        call get( cla,"gauge",attset ,LIB_CLA_OPTIONAL,"      use gauge transformation (deprecated)",CLA_CALC )                 
+        if (hasArgument(cla,"gauge")) call setState(GAUGETRANSFORM,attset)
+
+!        !call get( cla,"gauge",gaugeTransform,LIB_CLA_OPTIONAL,"      use gauge transform",CLA_CALC )
         
 
 
-        call get( cla,"png",opPng ,LIB_CLA_OPTIONAL,"        output result as .png file",CLA_OUTPUT)                           
+        !call get( cla,"png",isState(OPPNG) ,LIB_CLA_OPTIONAL,"        output result as .png file",CLA_OUTPUT)              
+
+        attset = isState(OPXYZ)
+        call get( cla,"opxyz",attset ,LIB_CLA_OPTIONAL,"      output phase field",CLA_OUTPUT )                 
+        if (hasArgument(cla,"opxyz")) call setState(OPXYZ,attset)
+        if (isState(OPXYZ)) opxyz_file_prefix = outfile
+
+        attset = isState(OPPNG)
+        call get( cla,"png",attset ,LIB_CLA_OPTIONAL,"        output result as .png file",CLA_OUTPUT )                 
+        if (hasArgument(cla,"png")) call setState(OPPNG,attset)
+
+        attset = isState(OPDIFF)
+        call get( cla,"opDP",attset ,LIB_CLA_OPTIONAL,"       output diffraction pattern",CLA_OUTPUT )                 
+        if (hasArgument(cla,"png")) call setState(OPDIFF,attset)
+
         call get( cla,"blur",pngBlur ,LIB_CLA_OPTIONAL,"       blur .png file by smoothing width sigma",CLA_OUTPUT )                                                        
         call get( cla,"norm",pngNorm ,LIB_CLA_OPTIONAL,"       normalise .png file intensity",CLA_OUTPUT )                                                        
         call get( cla,"yflip",yflip ,LIB_CLA_OPTIONAL,"      output png with y=0 at bottom, to match ovito orientation z out of screen",CLA_OUTPUT )                 
-        call get( cla,"opDP",opDiffPatt ,LIB_CLA_OPTIONAL,"       output diffraction pattern",CLA_OUTPUT )                 
+!        call get( cla,"opDP",opDiffPatt ,LIB_CLA_OPTIONAL,"       output diffraction pattern",CLA_OUTPUT )                 
         call get( cla,"dbg",dbg ,LIB_CLA_OPTIONAL,"        additional debug output",CLA_OUTPUT )                 
         if (rank==0) call report(cla)
         if (hasHelpArgument(cla)) call errorExit("done")
@@ -198,21 +250,21 @@
 
 
     !---    check for input sanity        
-        if (hasArgument(cla,"imin") .and. twobeam) then
+        if (hasArgument(cla,"imin") .and. isState(TWOBEAM)) then
             if (rank==0) then
                 print *,"run_SimulatedTEM warning - argument conflict - attempt to set -2 and -imin parameters"
                 print *,"run_SimulatedTEM warning - overriding two beam mode"
             end if
-            twobeam = .false.
+            call setState(TWOBEAM,.false.)
         end if
         if ((rank==0) .and. .not. hasArgument(cla,"f")) print *,"error - expected argument '-f <filename>'"
         if ((rank==0) .and. .not. allocated(hkl)) print *,"error - expected argument '-g h,k,l' or '-g h,i,k,l'"
 
 
         if (.not. hasArgument(cla,"o")) then
-            if (columnar) outfile = trim(outfile)//".c"
-            if (.not. lossy) outfile = trim(outfile)//".e"
-            if (twobeam)  outfile = trim(outfile)//".2"
+            if (isState(COLUMNAR)) outfile = trim(outfile)//".c"
+            if (.not. isState(LOSSY)) outfile = trim(outfile)//".e"
+            if (isState(TWOBEAM))  outfile = trim(outfile)//".2"
             if (nPrec>1)  outfile = trim(outfile)//".p"
             write(aa,fmt='(i2)') hkl(1)
             outfile = trim(outfile)//".g"//trim(adjustl(aa))
@@ -233,6 +285,9 @@
 
         specifiedRmat = hasArgument(cla,"R")
 
+        specifiedUmat = hasArgument(cla,"U")
+
+
 
 
 
@@ -247,8 +302,8 @@
 !******************************************************************************    
         
         if (rank==0) then
-            print *,"run_SimulatedTEM"
-            print *,"^^^^^^^^^^^^^^^^"
+            print *,"run_SimulatedTEM v."//trim(adjustl(VERSION))
+            print *,"^^^^^^^^^^^^^^^^^^^"//repeat("^",len_trim(adjustl(VERSION)))
             call get_environment_variable("HOSTNAME",dummy)
             if (len_trim(dummy)==0) then
                 call get_environment_variable("HOST",dummy)
@@ -268,52 +323,61 @@
             if (any(a0_in<=0)) then
                 print *,"       indicative latt param   TBD"
             else
-                print *,"       indicative latt param   ",a0_in
+                write(*,fmt='(a,3f12.8)') "        indicative latt param   ",a0_in
             end if
+            !if (specifiedUmat) then
+                print *,"       specified crystal orientation"
+                write(*,fmt='(a,3f12.8)') "          ",Umat(1:7:3)
+                write(*,fmt='(a,3f12.8)') "          ",Umat(2:8:3)
+                write(*,fmt='(a,3f12.8)') "          ",Umat(3:9:3)
+            !end if
             print *,""
 
             print *,"   microscope settings"
             print *,"   ^^^^^^^^^^^^^^^^^^^"
-            print *,"       accelerator voltage     ",V," (kV)"
-            print *,"       temperature             ",T," (K)"
+            write(*,fmt='(a,f12.3,a)') "        accelerator voltage     ",V," (kV)"
+            write(*,fmt='(a,f12.3,a)') "        temperature             ",T," (K)"
             if (specifiedRmat) then
-                print *,"       specified tilt matrix"
+                print *,"       specified tilt"
                 write(*,fmt='(a,3f12.8)') "       ",Rmat(1:7:3)
                 write(*,fmt='(a,3f12.8)') "       ",Rmat(2:8:3)
                 write(*,fmt='(a,3f12.8)') "       ",Rmat(3:9:3)
             else
-                print *,"       max foil tilt angle     ",tilt_max," (deg)"
+                write(*,fmt='(a,f12.3,a)') "        max foil tilt angle     ",tilt_max," (deg)"
                 print *,"       number of foil tilts    ",ntilt
-                print *,"       tweak foil tilt         ",tweak*tilt_max," (deg)"
+                write(*,fmt='(a,f12.6,a)') "        tweak foil tilt         ",tweak*tilt_max," (deg)"
             end if
             print *,""
 
             print *,"   diffraction condition"
             print *,"   ^^^^^^^^^^^^^^^^^^^^^"
-            print *,"       output g-vector         ",hkl
+            write(*,fmt='(a,4i3,a)') "        output g-vector         ",hkl
             print *,"       number precession imgs  ",nPrec
-            print *,"       precession angle        ",precAngle," (rad)"
-            print *,"       bright reflection n_g = ",n_g
+            write(*,fmt='(a,f12.6,a)') "        precession angle        ",precAngle," (rad)"
+            write(*,fmt='(a,f12.3,a)') "        bright reflection n_g = ",n_g
             print *,"       dark field tweak?       ",df
             print *,""
 
             print *,"   calculation settings"
             print *,"   ^^^^^^^^^^^^^^^^^^^^"
-            print *,"       use columnar approx     ",columnar
-            print *,"       inelastic scattering    ",lossy
-            print *,"       two beam mode           ",twobeam
-            if (.not. twobeam) &
+            call reportDashboard(o=8)
+            ! print *,"       use columnar approx     ",columnar
+            ! print *,"       inelastic scattering    ",lossy
+            ! print *,"       two beam mode           ",twobeam
+            if (.not. isState(TWOBEAM)) &
             print *,"       beam intensity thresh   ",imin   
             print *,"       size of rho calc block  ",zlayers
-            print *,"       gauge transform         ",gaugeTransform
+!            print *,"       gauge transform         ",gaugeTransform
             print *,""
 
             print *,"   output settings"
             print *,"   ^^^^^^^^^^^^^^^"
-            print *,"       output .png             ",oppng," with blur? ",pngBlur," normalised? ",pngNorm
-            print *,"       output diff patt        ",opDiffPatt 
+            if (isState(OPPNG)) &
+            print *,"       output .png  blur       ",pngBlur," normalised? ",pngNorm
+            !print *,"       output diff patt        ",opDiffPatt 
             print *,"       debug mode              ",dbg
             print *,""  
+
         end if
 
 
@@ -345,11 +409,24 @@
 
     !---    constructor - read input file and determine parameters of calculation
         !tt(T_CTOR) = Callipers_ctor()
-        imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V, nPrec = nPrec, precAngle = precAngle, columnar = columnar, lossy = lossy, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers  )
+        if (specifiedUmat) then
+            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers, dfg_bar = reshape( Umat,(/3,3/))  )
+        else
+            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers )
+        end if
         call pause(tt(T_INIT))
 
+
         
-        if ((rank==0) .and. opDiffPatt) then
+!******************************************************************************    
+!*    
+!*      FIND GOOD DIFFRACTION CONDITIONS
+!*    
+!*    
+!******************************************************************************    
+
+        
+        if ((rank==0) .and. isState(OPDIFF)) then
             call outputDiffractionPattern( imb,trim(outfile)//"_before",1024,maxIntensity = .false. )
         end if
 
@@ -367,7 +444,7 @@
 
         tt(T_OUTPUT) = Callipers_ctor()
         call pause(tt(T_OUTPUT))
-        if ((rank==0) .and. opDiffPatt) then
+        if ((rank==0) .and. isState(OPDIFF)) then
             call start(tt(T_OUTPUT))
             call outputDiffractionPattern( imb,trim(outfile)//"_ready",1024,maxIntensity = .false. )
             call outputDiffractionPattern( imb,trim(outfile)//"_max",1024,maxIntensity = .true. )
@@ -375,7 +452,7 @@
         end if
         
         call start(tt(T_TILT))
-        if (twobeam) then
+        if (isState(TWOBEAM)) then
             call changeGvectors( imb , hkl_in = hkl ) 
         else
             call selectImportantBeams( imb, imin = imin, hkl = hkl_important )
@@ -432,7 +509,7 @@
 
         
         
-        if (opDiffPatt) then
+        if (isState(OPDIFF)) then
             call start(tt(T_OUTPUT))
             call outputDiffractionPattern( imb,trim(outfile)//"_after",1024,maxIntensity=.false. )
             call pause(tt(T_OUTPUT))
@@ -442,7 +519,7 @@
         ! !    call outputDiffractionPattern( imb,trim(outfile),1024 )
         ! end if
 
-        if (opPng) then
+        if (isState(OPPNG)) then
             call start(tt(T_OUTPUT))
             if (rank==0) then
                 print *,""
@@ -461,7 +538,7 @@
                 write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - minmaxavg img ",minval(img),maxval(img),sum(img)/(Nx*Ny)
 
 
-                if ((rank==0).and. pngBlur) call blurImg( img,  getSigma( imb )/getA( imb ) )
+                if ((rank==0).and. pngBlur) call blurImg( img, 2*getSigma( imb )/getA( imb ) )
  
 
 
@@ -832,7 +909,7 @@
             spotRadius = Nx * sqrt(0.1d0/(nG*PI))
             ss = ( Nx/2 - 2*spotRadius )/modg
             spotRadius = min( spotRadius , modg*ss/4 )
-            if (rank==0) print *,"run_SimulatedTEM::outputDiffractionPattern info -  minmax I_g ",minval(I_g),maxval(I_g)
+            if (rank==0) print *,"run_SimulatedTEM::outputDiffractionPattern info - minmax I_g ",minval(I_g),maxval(I_g)
 
 
         !---    construct the image            
@@ -854,7 +931,7 @@
         !---    write image
             if (rank==0) then
                 print *,"run_SimulatedTEM::outputDiffractionPattern info - drawing ",(nG+1)," spots to """//trim(prefix)//".diff.png"//""""
-                print *,"run_SimulatedTEM::outputDiffractionPattern info -  minmax img ",minval(img),maxval(img)
+                print *,"run_SimulatedTEM::outputDiffractionPattern info - minmax img ",minval(img),maxval(img)
                 call writePng( trim(prefix)//".diff.png",img )
             end if
             return

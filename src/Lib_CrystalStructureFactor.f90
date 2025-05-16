@@ -38,6 +38,12 @@
     
         public      ::      computeCrystalStructureFactors
         public      ::      crystalStructureFactor
+
+        interface       computeCrystalStructureFactors
+            module procedure        computeCrystalStructureFactors0
+            module procedure        computeCrystalStructureFactors1
+            module procedure        computeCrystalStructureFactors2
+        end interface
   
                                                                                                                                                                                 
         interface           crystalStructureFactor
@@ -48,8 +54,8 @@
 !---^^^^^^^^
  
             
-        subroutine computeCrystalStructureFactors( element, hkl, T,V ,Vg , a,b)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine computeCrystalStructureFactors0( element, hkl, T,V ,Vg ,a0_in, a,b)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      find the crystal structure factor from the element name and reflection at the given temperature and accelerating voltage
                     
             character(len=*),intent(in)                     ::      element
@@ -57,12 +63,151 @@
             real(kind=real64),intent(in)                    ::      T       
             real(kind=real64),intent(in)                    ::      V
             complex(kind=real64),dimension(:),intent(out)   ::      Vg          !   (1:nReflections)
+            real(kind=real64),dimension(3),intent(in),optional          ::      a0_in       !   input lattice parameter, if known
             complex(kind=real64),dimension(:),intent(out),optional      ::      a,b
 
             character(len=LATTNAME_LEN)                     ::      latticename
-            real(kind=real64)                               ::      dwf
+!            real(kind=real64)                               ::      dwf
             real(kind=real64),dimension(3)                  ::      a0
             type(Lattice)                                   ::      latt
+!            integer                                         ::      nMotif,nReflections,ii
+            
+
+            ! integer                                         ::      nS
+            ! real(kind=real64)                               ::      smin,smax,ds        
+            ! real(kind=real64),dimension(DT_COEFFS)          ::      ar,br,ai,bi             !   Doyle-Turner coefficients
+            ! real(kind=real64),dimension(:),allocatable      ::      ff,ss           !   Scattering amplitudes
+            ! real(kind=real64)                               ::      mser,msei
+            ! complex(kind=real64),dimension(:,:),allocatable ::      aa,bb
+
+        !---    find the lattice
+            latticename =  getLatticeName(element) 
+            if (getLatticeType(latticename) == LATTICE_CUSTOM) then
+                print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors0 error - did not recognise lattice """//trim(latticename)//""""
+                print *,"   only coded"
+                call listAvailableLattices()
+                stop
+            end if            
+            latt = Lattice_ctor(latticename)
+            if (present(a0_in)) then
+                a0 = a0_in
+            else
+                a0 = getLatticeConstant(element)      
+            end if
+            if (getLatticeType(latt) == LATTICE_HCP) call setCoverA(latt,a0(3)/a0(1))
+            if (present(a)) then
+                call computeCrystalStructureFactors1( element, latt, a0, hkl, T,V ,Vg , a,b)
+            else
+                call computeCrystalStructureFactors1( element, latt, a0, hkl, T,V ,Vg )
+            end if
+            return
+
+            ! nMotif = getConventionalnMotif(latt)
+            ! allocate(aa(DT_COEFFS,nMotif))
+            ! allocate(bb(DT_COEFFS,nMotif))         
+            ! print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors0 info -"
+            ! call report(latt)
+
+        ! !---    Debye Waller factor and lattice constant
+        !     dwf = DebyeWallerFactor(element,T,latticename)
+        !     a0 = getLatticeConstant(element)          
+        !     write(*,fmt='(a,f12.6,a)')  " Lib_CrystalStructureFactor::computeCrystalStructureFactors0 info - Debye-Waller factor ",dwf," (A^2)"
+        !     write(*,fmt='(a,3f12.6,a)') " Lib_CrystalStructureFactor::computeCrystalStructureFactors0 info - lattice parameters  ",a0," (A)"
+
+        ! !---    find real DT coeffs
+        !     smin = LIB_INPUTREAL_SMIN
+        !     smax = LIB_INPUTREAL_SMAX
+        !     nS = LIB_INPUTREAL_NS
+        !     ds = (smax-smin)/nS
+        !     allocate(ss(0:ns))
+        !     allocate(ff(0:nS))
+        !     do ii = 0,nS
+        !         ss(ii) = smin + ii*ds
+        !     end do
+        !     call getScatteringAmplitude(element,ss,ff)
+        !     ar = getrealDoyleTurner_a(element)
+        !     br = getrealDoyleTurner_b(element)
+        !     call fitDoyleTurner( ss,ff,ar,br, mser )
+        !     deallocate(ss)
+        !     deallocate(ff)
+        !    ! print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors info - Doyle-Turner coeffs for real part of scattering "
+        !     ! write(*,fmt='(a6,2a16)') "coeff"," a_r(ii)"," b_r(ii)"
+        !     ! do ii = 1,DT_COEFFS
+        !     !     write(*,fmt='(i6,2f16.8))') ii,ar(ii),br(ii)
+        !     ! end do
+
+            
+        ! !---    find imag DT coeffs
+        !     smin = LIB_INPUTTDS_SMIN
+        !     smax = LIB_INPUTTDS_SMAX
+        !     nS = LIB_INPUTTDS_NS
+        !     ds = (smax-smin)/nS
+        !     allocate(ss(0:ns))
+        !     allocate(ff(0:nS))
+        !     call getImagScatteringAmplitude(element,V,dwf,ss,ff)
+        !     ai = getscatDoyleTurner_a(element,T)
+        !     bi = getscatDoyleTurner_b(element,T)
+        !     call fitDoyleTurner( ss,ff,ai,bi, msei )
+        !     deallocate(ss)
+        !     deallocate(ff)
+        !     print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors0 info - Doyle-Turner coeffs "
+        !     write(*,fmt='(a6,4a16)') "coeff"," a_r(ii)"," b_r(ii)"," a_i(ii)"," b_i(ii)"
+        !     do ii = 1,DT_COEFFS
+        !         write(*,fmt='(i6,4f16.8)') ii,ar(ii),br(ii),ai(ii),bi(ii)
+        !     end do
+        !     write(*,fmt='(3(a,f12.8))')" Lib_CrystalStructureFactor::computeCrystalStructureFactors0 info - mean square error ",mser," (real) ",msei," (imag)"
+            
+        ! !---    construct complex DT coeffs
+            
+        !     do ii = 1,DT_COEFFS
+        !         aa(ii,:) = cmplx( ar(ii),ai(ii),kind=real64 )
+        !         bb(ii,:) = cmplx( br(ii),bi(ii),kind=real64 )
+        !     end do
+
+        !     nReflections = size(hkl,dim=2)
+        !     if (size(hkl,dim=1)==3) then
+        !         !   hkl given as Miller indices
+        !         do ii = 1,nReflections
+        !             Vg(ii) = crystalStructureFactor1( a0, latticename, hkl(:,ii), aa,bb,dwf )
+        !         end do
+        !     else
+        !         !   hkl given as Miller-Bravais indices
+        !         do ii = 1,nReflections
+        !             Vg(ii) = crystalStructureFactor1( a0, latticename, MillerBravaisToMiller_plane(hkl(:,ii)), aa,bb,dwf )
+        !         end do
+        !     end if
+
+
+        !     if (present(a)) then
+        !         do ii = 1,DT_COEFFS
+        !             a(ii) = cmplx( ar(ii),ai(ii),kind=real64 )
+        !         end do
+        !     end if
+        !     if (present(b)) then
+        !         do ii = 1,DT_COEFFS
+        !             b(ii) = cmplx( br(ii),bi(ii),kind=real64 )
+        !         end do
+        !     end if
+
+            return
+        end subroutine computeCrystalStructureFactors0
+
+
+            
+        subroutine computeCrystalStructureFactors1( element, latt, a0, hkl, T,V ,Vg , a,b)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      find the crystal structure factor from the element name and lattice and reflection at the given temperature and accelerating voltage
+                    
+            character(len=*),intent(in)                     ::      element
+            type(Lattice),intent(in)                        ::      latt
+            real(kind=real64),dimension(3),intent(in)       ::      a0
+            integer,dimension(:,:),intent(in)               ::      hkl         !   (3,nReflections)
+            real(kind=real64),intent(in)                    ::      T       
+            real(kind=real64),intent(in)                    ::      V
+            complex(kind=real64),dimension(:),intent(out)   ::      Vg          !   (1:nReflections)
+            complex(kind=real64),dimension(:),intent(out),optional      ::      a,b
+
+            real(kind=real64)                               ::      dwf
             integer                                         ::      nMotif,nReflections,ii
             
 
@@ -72,27 +217,17 @@
             real(kind=real64),dimension(:),allocatable      ::      ff,ss           !   Scattering amplitudes
             real(kind=real64)                               ::      mser,msei
             complex(kind=real64),dimension(:,:),allocatable ::      aa,bb
-
-        !---    find the lattice
-            latticename =  getLatticeName(element) 
-            if (getLatticeType(latticename) == LATTICE_CUSTOM) then
-                print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors error - did not recognise lattice """//trim(latticename)//""""
-                print *,"   only coded"
-                call listAvailableLattices()
-                stop
-            end if            
-            latt = Lattice_ctor(latticename)
+ 
             nMotif = getConventionalnMotif(latt)
             allocate(aa(DT_COEFFS,nMotif))
             allocate(bb(DT_COEFFS,nMotif))         
-            print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors info -"
-            call report(latt)
+            print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors1 info -"
+            call report(latt,verbose=.true.)
 
         !---    Debye Waller factor and lattice constant
-            dwf = DebyeWallerFactor(element,T,latticename)
-            a0 = getLatticeConstant(element)          
-            write(*,fmt='(a,f12.6,a)')  " Lib_CrystalStructureFactor::computeCrystalStructureFactors info - Debye-Waller factor ",dwf," (A^2)"
-            write(*,fmt='(a,3f12.6,a)') " Lib_CrystalStructureFactor::computeCrystalStructureFactors info - lattice parameters  ",a0," (A)"
+            dwf = DebyeWallerFactor(element,T)
+            write(*,fmt='(a,f12.6,a)')  " Lib_CrystalStructureFactor::computeCrystalStructureFactors1 info - Debye-Waller factor ",dwf," (A^2)"
+            write(*,fmt='(a,3f12.6,a)') " Lib_CrystalStructureFactor::computeCrystalStructureFactors1 info - lattice parameters  ",a0," (A)"
 
         !---    find real DT coeffs
             smin = LIB_INPUTREAL_SMIN
@@ -130,12 +265,12 @@
             call fitDoyleTurner( ss,ff,ai,bi, msei )
             deallocate(ss)
             deallocate(ff)
-            print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors info - Doyle-Turner coeffs "
+            print *,"Lib_CrystalStructureFactor::computeCrystalStructureFactors1 info - Doyle-Turner coeffs "
             write(*,fmt='(a6,4a16)') "coeff"," a_r(ii)"," b_r(ii)"," a_i(ii)"," b_i(ii)"
             do ii = 1,DT_COEFFS
                 write(*,fmt='(i6,4f16.8)') ii,ar(ii),br(ii),ai(ii),bi(ii)
             end do
-            write(*,fmt='(3(a,f12.8))')" Lib_CrystalStructureFactor::computeCrystalStructureFactors info - mean square error ",mser," (real) ",msei," (imag)"
+            write(*,fmt='(3(a,f12.8))')" Lib_CrystalStructureFactor::computeCrystalStructureFactors1 info - mean square error ",mser," (real) ",msei," (imag)"
             
         !---    construct complex DT coeffs
             
@@ -148,12 +283,12 @@
             if (size(hkl,dim=1)==3) then
                 !   hkl given as Miller indices
                 do ii = 1,nReflections
-                    Vg(ii) = crystalStructureFactor1( a0, latticename, hkl(:,ii), aa,bb,dwf )
+                    Vg(ii) = crystalStructureFactor1( a0, latt, hkl(:,ii), aa,bb,dwf )
                 end do
             else
                 !   hkl given as Miller-Bravais indices
                 do ii = 1,nReflections
-                    Vg(ii) = crystalStructureFactor1( a0, latticename, MillerBravaisToMiller_plane(hkl(:,ii)), aa,bb,dwf )
+                    Vg(ii) = crystalStructureFactor1( a0, latt, MillerBravaisToMiller_plane(hkl(:,ii)), aa,bb,dwf )
                 end do
             end if
 
@@ -170,21 +305,61 @@
             end if
 
             return
-        end subroutine computeCrystalStructureFactors
+        end subroutine computeCrystalStructureFactors1        
 
-        function crystalStructureFactor1( a0, latticename, hkl, a,b,dwf ) result (Vg)
+
+
+        subroutine computeCrystalStructureFactors2( element, frac, latt, a0, hkl, T,V ,Vg ,a,b)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+    !*      find the crystal structure factor from the element name and lattice and elemental fraction and reflection at the given temperature and accelerating voltage
+    !*      DOES NOT INCLUDE THE RANDOM OCCUPATION ADDITIONAL SCATTERING TERM 
+    !*      See High Energy Electron Diffraction and Microscopy Peng, Dudarev, Whelan, OUP 2004 Chap 5.5
+            character(len=*),dimension(:),intent(in)        ::      element
+            real(kind=real64),dimension(:),intent(in)       ::      frac
+            type(Lattice),intent(in)                        ::      latt
+            real(kind=real64),dimension(3),intent(in)       ::      a0
+            integer,dimension(:,:),intent(in)               ::      hkl         !   (3,nReflections)
+            real(kind=real64),intent(in)                    ::      T       
+            real(kind=real64),intent(in)                    ::      V
+            complex(kind=real64),dimension(:),intent(out)   ::      Vg          !   (1:nReflections)
+            complex(kind=real64),dimension(:),intent(out),optional      ::      a,b
+            complex(kind=real64),dimension(size(hkl,dim=2)) ::      Vg_el
+            integer         ::      ii
+
+            if (present(a)) then
+                a = 0
+                b = 0
+            end if
+            Vg = 0
+            do ii = 1,size(element)
+                if ( (size(element) == 1).and.present(a) ) then
+                    call computeCrystalStructureFactors1( element(ii), latt, a0, hkl, T,V ,Vg_el,a,b )
+                else
+                    call computeCrystalStructureFactors1( element(ii), latt, a0, hkl, T,V ,Vg_el )
+                end if
+                Vg(:) = Vg(:) + frac(ii) * Vg_el(:)
+            end do
+            Vg(:) = Vg(:) / sum( frac(1:size(element)) )
+            
+            return
+        end subroutine computeCrystalStructureFactors2
+
+
+
+
+        function crystalStructureFactor1( a0, latt, hkl, a,b,dwf ) result (Vg)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      find the crystal structure factor from the Doyle Turner Coefficients
     !*      on input g is in reduced coordinates eg [110] and converted to A^-1 
                     
             real(kind=real64),dimension(3),intent(in)       ::      a0          !   for cubic crystals only use a0(1). For hcp will also set c/a ratio.
-            character(len=*),intent(in)                     ::      latticename
+            type(Lattice),intent(in)                        ::      latt
             complex(kind=real64),dimension(:,:),intent(in)  ::      a,b         !   (5,nMotif)
             real(kind=real64),intent(in)                    ::      dwf
             integer,dimension(3),intent(in)                 ::      hkl
             complex(kind=real64)                            ::      Vg
             
-            type(Lattice)                                   ::      latt
+            !type(Lattice)                                   ::      latt
             real(kind=real64)                               ::      omega , aa
             real(kind=real64)                               ::      ss , gdotr
             real(kind=real64),dimension(3)                  ::      rr
@@ -194,15 +369,15 @@
             integer         ::      nMotif,ii
              
             
-            if (getLatticeType(latticename) == LATTICE_CUSTOM) then
-                print *,"Lib_CrystalStructureFactor::crystalStructureFactor1 error - did not recognise lattice """//trim(latticename)//""""
-                print *,"   only coded"
-                call listAvailableLattices()
-                stop
-            end if            
-            latt = Lattice_ctor(latticename)
+            ! if (getLatticeType(latticename) == LATTICE_CUSTOM) then
+            !     print *,"Lib_CrystalStructureFactor::crystalStructureFactor1 error - did not recognise lattice """//trim(latticename)//""""
+            !     print *,"   only coded"
+            !     call listAvailableLattices()
+            !     stop
+            ! end if            
+            ! latt = Lattice_ctor(latticename)
             aa = a0(1)                          !   characteristic length scale for the lattice
-            if (getLatticeType(latt) == LATTICE_HCP) call setCoverA(latt,a0(3)/aa)
+            ! if (getLatticeType(latt) == LATTICE_HCP) call setCoverA(latt,a0(3)/aa)
 
         !---    find the reciprocal lattice vectors. Note the reciprocal lattice stored in latt is for the crystal type, so need to set a length scale too.
             bb = getReciprocalLatticeVectors(latt) / aa

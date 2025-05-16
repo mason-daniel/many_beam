@@ -21,7 +21,7 @@
         use Lib_Gvectors
         use Lib_RelativisticElectrons
         use Lib_RK4
-
+        use Lib_Dashboard
         implicit none
         private
 
@@ -256,21 +256,25 @@
             integer,intent(in),optional         ::      u,o
             integer     ::      uu,oo
             integer     ::      ii
+            real(kind=real64),dimension(3)      ::      gg
             
             uu = 6 ; if (present(u)) uu = u
             oo = 0 ; if (present(o)) oo = o
             write(unit=uu,fmt='(a,i6,a,3f12.6,a)') repeat(" ",oo)//"ManyBeam [nG=",this%nG,", k = ",this%kvec," (1/A)]"
+            gg = 0
             if (isMillerBravais(this%gv)) then
-                write(unit=uu,fmt='(a,a16,3a12,a36)') repeat(" ",oo+4),"Miller-Bravais","S_g (1/A)"," Re[xi_g]"," Im[xi_g]"," (k+g)/|k|"
-                write(unit=uu,fmt='(a,4i4,6f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),this%kplusgonk(:,0)
+                write(unit=uu,fmt='(a,a16,3a12,2a36)') repeat(" ",oo+4),"Miller-Bravais","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
+                write(unit=uu,fmt='(a,4i4,9f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
-                    write(unit=uu,fmt='(a,4i4,6f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),this%kplusgonk(:,ii)
+                    gg = getG(this%gv,ii)
+                    write(unit=uu,fmt='(a,4i4,9f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg(:),this%kplusgonk(:,ii)
                 end do
             else
-                write(unit=uu,fmt='(a,a12,3a12,a36)') repeat(" ",oo+4),"Miller index","S_g (1/A)"," Re[xi_g]"," Im[xi_g]"," (k+g)/|k|"
-                write(unit=uu,fmt='(a,3i4,6f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),this%kplusgonk(:,0)
+                write(unit=uu,fmt='(a,a12,3a12,2a36)') repeat(" ",oo+4),"Miller index","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
+                write(unit=uu,fmt='(a,3i4,9f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
-                    write(unit=uu,fmt='(a,3i4,6f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),this%kplusgonk(:,ii)
+                    gg = getG(this%gv,ii)
+                    write(unit=uu,fmt='(a,3i4,9f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg,this%kplusgonk(:,ii)
                 end do
             end if
 
@@ -388,12 +392,13 @@
         subroutine perfectLatticeIntensity1(this, L_R, R, maxIntensity, Ig )
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      use the many-beam equations in the columnar/loss free approximation
-    !*      to find the intensity at the back of the foil
+    !*      to find the maximum intensity in the foil, 
+    !*      or the intensity at the back of the foil
     !*      assuming a tilt R.
             type(ManyBeam),intent(in)                               ::      this
-            real(kind=real64),intent(in)                            ::      L_R     !   foil thickness after rotation
+            real(kind=real64),intent(in)                            ::      L_R                 !   foil thickness after rotation
             real(kind=real64),dimension(3,3),intent(in)             ::      R
-            logical,intent(in)                                      ::      maxIntensity
+            logical,intent(in)                                      ::      maxIntensity        !   if true, then max intensity inside foil
             real(kind=real64),dimension(0:this%nG),intent(out)      ::      Ig
  
             integer                             ::      ii
@@ -736,7 +741,7 @@
         end function getGradPhi
 
 
-        subroutine finddPhidz( this , phi, iz, dphidz, columnar )
+        subroutine finddPhidz( this , phi, iz, dphidz )
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
     !*      compute derivative of phi in the z direction.
     !*      note that I will have phi on bounds lbx:ubx, but am requesting gradient in interior (lbx+1:ubx-1)
@@ -744,7 +749,7 @@
             complex(kind=real64),dimension(:,:,:),pointer,intent(in)        ::      phi                     !   (0:nG,lbx:ubx,lby:uby)
             integer,intent(in)                                              ::      iz                      !   slice- needed to find corresponding x_g,rho etc
             complex(kind=real64),dimension(:,:,:),pointer,intent(inout)     ::      dphidz                  !   (0:nG,lbx:ubx,lby:uby)
-            logical,intent(in)                                              ::      columnar
+            !logical,intent(in)                                              ::      columnar
 
             integer                                             ::      ix,iy
             complex(kind=real64),dimension(2,0:this%nG)         ::      gradphi_r
@@ -808,11 +813,11 @@
             !gradphi_r = 0.0d0
             grad_arg_x_r = 0.0d0
             x_r = 0
-            border = columnar           !   if using columnar approx, can treat all voxels as "border" ie don't use gradient term
+            border = isState(COLUMNAR)           !   if using columnar approx, can treat all voxels as "border" ie don't use gradient term
             do iy = lby,uby
                 do ix = lbx,ubx
 
-                    if (.not. columnar) border = (iy == lby).or.(iy == uby).or.(ix == lbx).or.(ix == ubx)           !   can't find gradient at the border
+                    if (.not. isState(COLUMNAR)) border = (iy == lby).or.(iy == uby).or.(ix == lbx).or.(ix == ubx)           !   can't find gradient at the border
 
 
                     !LIB_MANYBEAM_DBG = ((abs(ix-7.5)<1).and.(abs(iy-7.5)<1)) 

@@ -17,7 +17,7 @@
 !*          1)  this = AtomSpace_ctor(a,xyzoffset,a_super)              uses only the imaging space grid spacing and data from the .xyz file
 !*          2)  setR(this,R)                                            if we know the rotation matrix ( even approximately before fine tuning ) then this sets the foil orientation
 !*          3)  setThickness(this) or setThickness(this,r)              determines the z extent of the foil after rotation. Use the atom positions if there is an explicit surface
-!*          4)  suggestImagingSpace(this,Nx,Ny,Nz)                 return number of imaging space voxels side a to contain the rotated atom set
+!*          4)  suggestImagingSpace(this,Nx,Ny,Nz)                      return number of imaging space voxels side a to contain the rotated atom set
 !*          5)  setDelta(this,Nx,Ny,Nz)                                 find the displacement so that an atom in centre of .xyz file is in centre of imaging space
 !*      
 !*      This can all be done in one step if required
@@ -50,14 +50,11 @@
         public      ::      geta_super
         public      ::      getR
         public      ::      getL
-        !public      ::      getn            !   returns the normal to the plane after cell rotation by R
- 
+        
         public      ::      setR            !   sets the rotation matrix R , and the normal to the foil n. Does not set the thickness.
         public      ::      setThickness    !   computes the bounds of the atom box in the imaging space
         public      ::      getThickness    !   returns the bounds of the atom box in the imaging space
         public      ::      setDelta        !   computes offset required so after rotation atom in centre of .xyz box is in centre of imaging box
-
-    !    public      ::      scaledDensity   !   converts atoms per cell into a scaled density range 0:1
 
         integer,private                     ::      rank = 0
         integer,private                     ::      nProcs = 1         
@@ -72,7 +69,6 @@
             real(kind=real64),dimension(3,3)    ::      a_super             !   periodic supercell defined in input xyz file, ie before rotation by R. Columns are the three supercell repeat vectors in the .xyz file
             real(kind=real64),dimension(3,3)    ::      R                   !   rotation matrix
             real(kind=real64),dimension(3)      ::      n0                  !   normal vector defining plane of foil, before rotation by R
-            !real(kind=real64),dimension(3)      ::      n                   !   normal vector defining plane of foil, including rotation. n = R n0 
             real(kind=real64)                   ::      L                   !   thickness of foil. If we are working with planes, (d2-d1) = L cos(theta). But we can also set this for an explicit surface using atom positions.
         end type 
 
@@ -110,9 +106,6 @@
             module procedure        getdelta0
         end interface
 
-        ! interface   getn
-        !     module procedure        getn0
-        ! end interface
 
         interface   geta_super
             module procedure        geta_super0

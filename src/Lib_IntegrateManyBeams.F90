@@ -19,6 +19,7 @@
 !*
 
         use iso_fortran_env
+        use Lib_Dashboard
         use Lib_AtomSpace
         use Lib_ImagingSpace
         use Lib_Lattices
@@ -65,8 +66,9 @@
 
         logical,public                      ::      LIB_IMB_DBG = .false.
         real(kind=real64),parameter         ::      PI = 3.14159265390d0
-        logical,public                      ::      gaugeTransform = .false.
+        !logical,public                      ::      isState(GAUGETRANSFORM) = .false.
         integer,private                     ::      rank = 0, nProcs = 1
+        character(len=256),public           ::      opxyz_file_prefix = "test"
 
         public          ::      Lib_IntegrateManyBeams_init_MPI
 
@@ -118,9 +120,9 @@
             real(kind=real32),dimension(:,:),pointer            ::      r                   !   (3,nAtoms) positions of atoms, read by readInputXyzFile(), converted to imaging space units by setImagingSpace()
             real(kind=real64)                                   ::      omega0              !   volume per atom
             
-            logical                                             ::      columnar            !   use columnar approximation
             integer                                             ::      border              !   need extra border of cells if columnar approx is used
-            logical                                             ::      lossy               !   use imaginary parts of crystal srtucture factor
+            ! logical                                             ::      columnar            !   use columnar approximation
+            ! logical                                             ::      lossy               !   use imaginary parts of crystal srtucture factor
             integer(kind=STATUS)                                ::      status              !   status of calculation
 
             type(ManyBeam),dimension(:),pointer                 ::      mb
@@ -204,9 +206,9 @@
             this%a0 = 0
             this%omega0 = 0
             nullify(this%r)
-            this%columnar = .true.
+            ! this%columnar = .true.
             this%border = 1
-            this%lossy = .true.
+            ! this%lossy = .true.
             nullify(this%slice)
             this%status = LIB_IMB_STATUS_UNSET
             return
@@ -214,13 +216,13 @@
 
 
 
-        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,nPrec,precAngle,columnar,lossy,rho_in,zlayers  ) result(this)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                  
+        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,nPrec,precAngle,rho_in,zlayers,dfg_bar  ) result(this)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^               
     !*      default constructor. Intended to read the .xyz input file and determine basic parameters of the calculation.
     !*      Sets a default large number of g-vectors and no foil tilt.
     !*      Sets the default atom space assuming no foil tilt.
     !*      Does not compute the optimal foil tilt
-    !*      Does not set the final short list of g-vectorsif (this%columnar) this%border = 1
+    !*      Does not set the final short list of g-vectors if (columnar) this%border = 1
     !*      Does not set the imaging space 
     !*      Does not compute the phase factors
     !        
@@ -231,10 +233,11 @@
             real(kind=real64),intent(in)                ::      V                       !   accelerating voltage (kV)
             integer,intent(in)                          ::      nPrec                   !   number of many beam copies to use for precession
             real(kind=real64),intent(in)                ::      precAngle               !   precession angle (rad)
-            logical,intent(in),optional                 ::      columnar                !   use columnar approximation
-            logical,intent(in),optional                 ::      lossy                   !   use imaginary parts of crystal structure factor
+            ! logical,intent(in),optional                 ::      columnar                !   use columnar approximation
+            ! logical,intent(in),optional                 ::      lossy                   !   use imaginary parts of crystal structure factor
             real(kind=real64),intent(in),optional       ::      rho_in                  !   radius of reflections to select
             integer,intent(in),optional                 ::      zlayers                 !   number of layers in rho calculation block (even)
+            real(kind=real64),dimension(3,3),intent(in),optional    ::      dfg_bar     !   mean deformation gradient, if input from command line parameters
             type(IntegrateManyBeams)                    ::      this
 
             real(kind=real64),dimension(3)              ::      xyz_offset              !   offset of atom positions read from xyz file
@@ -245,15 +248,15 @@
             this = IntegrateManyBeams_null()
 
         !---    store some basic facts about the calculation            
-            if (present(columnar)) this%columnar = columnar
-            if (present(lossy)) this%lossy = lossy            
+            ! if (present(columnar)) this%columnar = columnar
+            ! if (present(lossy)) isState(LOSSY) = lossy            
             if (present(zlayers)) this%zlayers = zlayers            
             this%T = T
             this%V = V * 1000
             this%precAngle = precAngle
             this%nPrec = max(1,nPrec)
             
-            if (.not. this%columnar) this%border = 2
+            if (.not. isState(COLUMNAR)) this%border = 2
 
 
         !---    read input file            
@@ -262,7 +265,11 @@
                 print *,"reading input atomic positions file"
                 print *,"^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
             end if
-            call readInputXyzFile( this,filename,xyz_offset,a_super )                
+            if (present(dfg_bar)) then
+                call readInputXyzFile( this,filename,xyz_offset,a_super,dfg_bar )                
+            else
+                call readInputXyzFile( this,filename,xyz_offset,a_super )                
+            end if
             ii = whichElement(this%element)
             if (ii == 0) then
                 if (rank==0) print *,"Lib_IntegrateManyBeams::IntegrateManyBeams_ctor1 warning - do not recognise element """//trim(this%element)//""" - expect problems"
@@ -358,6 +365,7 @@
             uu = 6 ; if (present(u)) uu = u
             oo = 0 ; if (present(o)) oo = o
             write(unit=uu,fmt='(a,i6,a)') repeat(" ",oo)//"IntegrateManyBeams [nPrec=",this%nPrec,"]"
+           ! call reportDashboard(uu,oo+4)
             write(unit=uu,fmt='(a,f10.2,a)') repeat(" ",oo+4)//"Temperature      : ",this%T," (K)"
             write(unit=uu,fmt='(a,f10.2,a)') repeat(" ",oo+4)//"Electron voltage : ",this%V," (keV)"
             call report(this%latt,uu,oo+4)
@@ -410,6 +418,10 @@
             complex(kind=real64),dimension(:),allocatable   ::      Vg                  !   crystal structure factor
             real(kind=real64),dimension(3,3)    ::      RR!,R0
 
+            real(kind=real64)                               ::      absxi
+            real(kind=real64),dimension(:),allocatable      ::      modxi
+            integer                                         ::      nmodxi
+
             !R0 = RotationMatrix_Identity
 
             if (associated(this%gv)) then
@@ -424,7 +436,7 @@
                 call errorExit("changeGvectors1 error - need to call with either radius |hkl|<rho_in or specified vector [hkl_in]")
             end if
             
-            !call report(this%gv)
+            !if (rank==0) call report(this%gv)
             
  
             gv2 = Gvectors_ctor(this%gv,doubleSet=.true.)
@@ -447,7 +459,7 @@
             end if
             allocate(Vg(nG2))
             if (rank == 0) then
-                call computeCrystalStructureFactors( this%element,hkl, this%T,this%V, Vg )       !    note computeCrystalStructureFactors wants accelerator voltage in V not kV.
+                call computeCrystalStructureFactors( this%element,hkl, this%T,this%V, Vg, (/this%a0,this%a0,this%a0/) )                  !    note computeCrystalStructureFactors wants accelerator voltage in V not kV.
             end if
 #ifdef MPI
             call MPI_BCAST( Vg,nG2,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,ii)
@@ -456,10 +468,10 @@
             
             do ii = 1,nG2                
                 this%xi(ii) = PI * HBAR * velocity( this%V ) / Vg(ii)
-                if (.not. this%lossy) this%xi(ii) = real(this%xi(ii))
+                if (.not. isState(LOSSY)) this%xi(ii) = real(this%xi(ii))
             end do
             if (rank==0) then
-                if (.not. this%lossy) then
+                if (.not. isState(LOSSY)) then
                     if (isMillerBravais(this%gv)) then
                         write(*,fmt='(a16,a38,a16)') "reflection","V_g","xi_g"
                     else
@@ -473,44 +485,50 @@
                     end if
                 end if
                ! if ( LIB_IMB_DBG .or. (nG2<=10) ) then
-                if ( .true. ) then
+                allocate( modxi(nG2) ) ; modxi = 0 ; nModxi = 0        !   reduce the amount of screen output by only giving distinct |g|
+            !    if ( .true. ) then
                     do ii = 1,nG2  
-                        if (.not. this%lossy) then
-                            if (isMillerBravais(this%gv)) then
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                        absxi = abs(this%xi(ii)) 
+                        if (.not. any(abs(modxi(1:nmodxi)-absxi)<1.0e-4) ) then
+                            nmodxi = nmodxi + 1
+                            modxi(nmodxi) = absxi
+                            if (.not. isState(LOSSY)) then
+                                if (isMillerBravais(this%gv)) then
+                                    write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                                else                                
+                                    write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                                end if
                             else
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                            end if
-                        else
-                            if (isMillerBravais(this%gv)) then
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                            else
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                                if (isMillerBravais(this%gv)) then
+                                    write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                                else
+                                    write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                                end if
                             end if
                         end if
                     end do
-                else
-                    do ii = 1,nG2  
-                        if (.not. this%lossy) then
-                            if (isMillerBravais(this%gv)) then
-                                if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                            else
-                                if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                            end if
-                        else
-                            if (isMillerBravais(this%gv)) then
-                                if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                            else
-                                if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                            end if
-                        end if
-                    end do
-                    print *,"..."
-                end if
+                ! else
+                !     do ii = 1,nG2  
+                !         if (.not. isState(LOSSY)) then
+                !             if (isMillerBravais(this%gv)) then
+                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
+                !                 write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                !             else
+                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
+                !                 write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                !             end if
+                !         else
+                !             if (isMillerBravais(this%gv)) then
+                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
+                !                 write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                !             else
+                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
+                !                 write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                !             end if
+                !         end if
+                !     end do
+                !     print *,"..."
+                ! end if
                 print *,""
             end if
 
@@ -602,7 +620,7 @@
             !call report(this%gv)
             call setR(this%as,R)                                    !   update atom space
 
-            this%dfg_bar = matmul( R,this%dfg_bar )                         !   rotate crystal orientation
+            this%dfg_bar = matmul( R,this%dfg_bar )                 !   rotate crystal orientation
 
             do mm = 1,this%nPrec
                 call setOrientationDependence(this%mb(mm))          !   mb has a pointer to gv
@@ -785,7 +803,7 @@
             real(kind=real64),intent(in)            ::      theta_max           !   max tilt angle (radians)
             integer,intent(in)                      ::      nTrial              !   number of tilts to try
             logical,intent(in)                      ::      bright              !   if true, make [hkl] intensity high. Otherwise make low.
-            real(kind=real64),dimension(3,3),intent(out)    ::      R
+            real(kind=real64),dimension(3,3),intent(out)::      R
 
 
             real(kind=real64),dimension(3,3,nTrial)     ::      RR
@@ -1007,14 +1025,14 @@
                     !   ensure that phi is distributed correctly 
                         this%slice(mm)%phi(:,:,:) = reshape( rk_phip, (/nG+1,my_nx,my_ny/) )
                     !   compute dphidz
-                        call finddPhidz( this%mb(mm) , this%slice(mm)%phi , iz-iz_layer+dz, dphidz, this%columnar )
+                        call finddPhidz( this%mb(mm) , this%slice(mm)%phi , iz-iz_layer+dz, dphidz )
                         rk_dphip = pack(dphidz,.true.)
                     !   update accumulators in RK4
                         call update(integrator,rk_step,dz)
                        
                     end do
                     this%slice(mm)%phi(:,:,:) = reshape( rk_phip(:), (/nG+1,my_nx,my_ny/) )
-                    if (.not. this%columnar) call sendrecv( this%is,this%slice(mm)%phi,this%border )
+                    if (.not. isState(COLUMNAR)) call sendrecv( this%is,this%slice(mm)%phi,this%border )
 
                 end do
 
@@ -1099,6 +1117,7 @@
 
             allocate(keep(nn))
             this%gv = Gvectors_ctor( a_conventional_cell,hkl(:,2:nn) )        !   make a temporary set of g-vectors, so that we can test for Laue zones
+            call rotate(this%gv,this%dfg_bar)
             do ii = 1,nn                
                 gg = getg( a_conventional_cell,hkl(:,ii) )
                 keep(ii) = keepGvector( this,gg,rule )
@@ -1115,7 +1134,7 @@
             end do
             call delete(this%gv)                                            !   delete the temporary set of g-vectors.
             nn = count(keep)
-            if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors info -keeping ",nn,"/",size(keep)
+            if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors info - keeping ",nn,"/",size(keep)
             
  
         !---    bubble sort permitted reflections
@@ -1225,10 +1244,10 @@
  
 
 
-        subroutine readInputXyzFile( this,filename,xyz_offset,a_super )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine readInputXyzFile( this,filename,xyz_offset,a_super,dfg_bar )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      reads in the atom positions ( shared by all processes )
-    !*      computes the average deformation gradient (this%dfg_bar) if possible
+    !*      computes the average deformation gradient dfg_bar if possible and not provided
     !*      sets the most populous element name (this%element)
     !*      returns the offset of atoms in file, and periodic supercell lattice vectors
      
@@ -1236,6 +1255,8 @@
             character(len=*),intent(in)                         ::      filename
             real(kind=real64),dimension(3),intent(out)          ::      xyz_offset  !   atom position offset read from file
             real(kind=real64),dimension(3,3),intent(out)        ::      a_super
+            real(kind=real64),dimension(3,3),intent(in),optional    ::      dfg_bar
+            
 
             type(XYZFile)       ::      xyz
             logical             ::      ok,ok_tmp
@@ -1271,7 +1292,13 @@
                     this%r = this%r + 1.0e-8
                     call getSupercell(xyz,a_super,ok) 
                     if (.not. ok) print *,"Lib_IntegrateManyBeams::readInputXyzFile error - could not read supercell information"
-                    if (getNColumns(xyz)>=13) then
+                    if (present(dfg_bar)) then
+                        if (rank==0) then
+                            print *,"Lib_IntegrateManyBeams::readInputXyzFile info - using deformation gradient data from command line argument -U"
+                        end if
+                        this%dfg_bar = dfg_bar
+                        call DefGradToStrainAndRotMat(this%dfg_bar,eps_bar,rot_bar)
+                    else if (getNColumns(xyz)>=13) then
                         print *,"Lib_IntegrateManyBeams::readInputXyzFile info - assuming column 4 is grain number, 5:13 are deformation gradient"
                         nGrains = maxval(nint( this%r(4,:) ))
                         print *,"Lib_IntegrateManyBeams::readInputXyzFile info - read number of grains from .xyz file = ",nGrains
@@ -1497,7 +1524,7 @@
             end if
 
              
-            if (gaugeTransform) then
+            if (isState(GAUGETRANSFORM)) then
             
             !---    we don't need to compute phase factors for all the g-vectors.
             !       g=0 gives a constant, x(g=0) = exp[ -i g.u ] = 1
@@ -1569,10 +1596,10 @@
 
 
         !---    dump of atom positions and z-slice
-            if (LIB_IMB_DBG .and. (iz==0)) then   
-                if (gaugeTransform) then 
-                    print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - rank ",rank," writing grad_arg_x slice to .xyz"
-                    open(unit=500,file=trim(numberFile("test",rank,"xyz")),action="write")
+            if (isState(OPXYZ) .and. (iz==0)) then   
+                if (isState(GAUGETRANSFORM)) then 
+                    print *,"Lib_IntegrateManyBeams::computePhaseFields info - rank ",rank," writing grad_arg_x slice to .xyz"
+                    open(unit=500,file=trim(numberFile(trim(opxyz_file_prefix),rank,"xyz")),action="write")
                         write(unit=500,fmt='(i8)') this%nAtoms + (bb(2,1)+2*this%border+1-bb(1,1))*(bb(2,2)+2*this%border+1-bb(1,2))*this%zlayers
                         write(unit=500,fmt='(a,9f12.6,a)') "Lattice=""",getA_super(this%as),""" Properties=Species:S:1:Pos:R:3:rho:R:1:GradArgX:R:3"
                         do ii = 1,this%nAtoms
@@ -1587,8 +1614,8 @@
                         end do                    
                     close(unit=500)
                 else
-                    print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - rank ",rank," writing x slice to .xyz"
-                    open(unit=500,file=trim(numberFile("test",rank,"xyz")),action="write")
+                    print *,"Lib_IntegrateManyBeams::computePhaseFields info - rank ",rank," writing x slice to .xyz"
+                    open(unit=500,file=trim(numberFile(trim(opxyz_file_prefix),rank,"xyz")),action="write")
                         write(unit=500,fmt='(i8)') this%nAtoms + (bb(2,1)+2*this%border+1-bb(1,1))*(bb(2,2)+2*this%border+1-bb(1,2))*this%zlayers
                         write(unit=500,fmt='(a,9f12.6,a)') "Lattice=""",getA_super(this%as),""" Properties=Species:S:1:Pos:R:3:rho:R:1:Re(x):R:1:Im(x):R:1"
                         do ii = 1,this%nAtoms
@@ -1608,7 +1635,7 @@
 
         !---    unpack the computed g-vectors
 
-            if (gaugeTransform) then             
+            if (isState(GAUGETRANSFORM)) then             
                 if ((rank==0).and.LIB_IMB_DBG) then
                     do ii = 1,nGcalc
                         mingrad_arg_x = huge(1.0)
@@ -1633,7 +1660,7 @@
 
         !---    set the phase factors for my z-slice           
             do mm = 1,this%nPrec
-                if (gaugeTransform) then   
+                if (isState(GAUGETRANSFORM)) then   
                     !if ((rank==0).and.LIB_IMB_DBG)  print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - call setPhaseFactors(",mm,")",loc(this%grad_arg_x),loc(this%rho),size(this%grad_arg_x),size(this%rho)
                     call setPhaseFactors( this%mb(mm),iz,iz_high, this%grad_arg_x,this%rho )
                 else

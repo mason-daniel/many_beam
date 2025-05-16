@@ -28,9 +28,11 @@ target_include_directories(CommandLine
 
 #Split utility code into its own lib
 add_library(CSF_Utils STATIC
+    Lib_Dashboard.f90 
     Lib_RandomSeed.f90
     Lib_GoldenSection.f90
     Lib_RelativisticElectrons.f90
+    Lib_DebyeFunction.f90
     Lib_Elements.f90
     Lib_Lattices.f90
     Lib_Linint.f90    

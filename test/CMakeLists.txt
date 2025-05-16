@@ -37,6 +37,15 @@ set_tests_properties(Lib_FibonacciSphere_test
     PASS_REGULAR_EXPRESSION "PASS") 
      
     
+add_executable(test_Lib_DebyeFunction test_Lib_DebyeFunction.f90) 
+target_link_libraries(test_Lib_DebyeFunction CSF_Utils CommandLine )
+add_test(NAME Lib_DebyeFunction_test COMMAND test_Lib_DebyeFunction )
+set_tests_properties(Lib_DebyeFunction_test
+    PROPERTIES
+    LABELS "EXAMPLE;SHORT"
+    #ctest will look for "PASS" in the stdout and consider it a pass if it finds it
+    PASS_REGULAR_EXPRESSION "PASS") 
+     
  
 add_executable(test_Lib_ImagingSpace test_Lib_ImagingSpace.F90)
 target_link_libraries(test_Lib_ImagingSpace ManyBeam_Utils CommandLine )
@@ -165,6 +174,15 @@ set_tests_properties(CLAtest
      
     
 
+add_executable(test_Lib_Dashboard test_Lib_Dashboard.f90)
+target_link_libraries(test_Lib_Dashboard CSF_Utils )
+add_test(NAME Lib_Dashboard_test COMMAND test_Lib_Dashboard )
+set_tests_properties(Lib_Dashboard_test 
+    PROPERTIES
+    LABELS "EXAMPLE;SHORT"
+    #ctest will look for "PASS" in the stdout and consider it a pass if it finds it
+    PASS_REGULAR_EXPRESSION "PASS"
+) 
     
 
 add_executable(testRandom testLib_RandomSeed.f90)

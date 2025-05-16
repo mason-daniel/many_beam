@@ -276,12 +276,12 @@
                 write(unit=uu,fmt='(a,3f12.6,a6,3f12.6)')      repeat(" ",oo+4),this%B(ii,:) 
             end do
             if (this%MillerBravais) then
-                write(unit=uu,fmt='(a,a16,a36,a12)') repeat(" ",oo+4),"Miller-Bravais","g-vector","|g|"
+                write(unit=uu,fmt='(a,a16,a36,a12)') repeat(" ",oo+4),"Miller-Bravais","  g-vector"//repeat(" ",26),"|g|"
                 do ii = 1,this%n
                     write(unit=uu,fmt='(a,4i4,5f12.6)') repeat(" ",oo+4),this%hjkl(:,ii),getg(this,ii),norm2(getg(this,ii))
                 end do
             else
-                write(unit=uu,fmt='(a,a12,a36,a12)') repeat(" ",oo+4),"Miller index","g-vector","|g|"
+                write(unit=uu,fmt='(a,a12,a36,a12)') repeat(" ",oo+4),"Miller index","  g-vector"//repeat(" ",26),"|g|"
                 do ii = 1,this%n
                     write(unit=uu,fmt='(a,3i4,5f12.6)') repeat(" ",oo+4),this%hkl(:,ii),getg(this,ii),norm2(getg(this,ii))
                 end do
