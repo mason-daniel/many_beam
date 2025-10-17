@@ -107,7 +107,7 @@
 !*    
 !******************************************************************************    
             
-        imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,nPrec = nPrec,precAngle = precAngle )
+        imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,4,nPrec = nPrec,precAngle = precAngle )
         if (rank==0) call report(imb)
 
 

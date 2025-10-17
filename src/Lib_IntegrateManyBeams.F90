@@ -66,7 +66,6 @@
 
         logical,public                      ::      LIB_IMB_DBG = .false.
         real(kind=real64),parameter         ::      PI = 3.14159265390d0
-        !logical,public                      ::      isState(GAUGETRANSFORM) = .false.
         integer,private                     ::      rank = 0, nProcs = 1
         character(len=256),public           ::      opxyz_file_prefix = "test"
 
@@ -80,6 +79,7 @@
         public          ::      getGvectors
         public          ::      getIntensity
         public          ::      getA
+        public          ::      getnBuf
         public          ::      getSigma
         public          ::      selectFoilTilt
         public          ::      applyFoilTilt
@@ -121,8 +121,6 @@
             real(kind=real64)                                   ::      omega0              !   volume per atom
             
             integer                                             ::      border              !   need extra border of cells if columnar approx is used
-            ! logical                                             ::      columnar            !   use columnar approximation
-            ! logical                                             ::      lossy               !   use imaginary parts of crystal srtucture factor
             integer(kind=STATUS)                                ::      status              !   status of calculation
 
             type(ManyBeam),dimension(:),pointer                 ::      mb
@@ -170,6 +168,10 @@
             module procedure            getA0
         end interface
 
+        interface       getnBuf
+            module procedure        getnBuf0
+        end interface
+
         interface       changeGvectors
             module procedure            changeGvectors0
             module procedure            changeGvectors1
@@ -206,18 +208,17 @@
             this%a0 = 0
             this%omega0 = 0
             nullify(this%r)
-            ! this%columnar = .true.
             this%border = 1
-            ! this%lossy = .true.
             nullify(this%slice)
+            this%M = 4
             this%status = LIB_IMB_STATUS_UNSET
             return
         end function IntegrateManyBeams_null
 
 
 
-        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,nPrec,precAngle,rho_in,zlayers,dfg_bar  ) result(this)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^               
+        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,M,nPrec,precAngle,rho_in,zlayers,dfg_bar ) result(this)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^               
     !*      default constructor. Intended to read the .xyz input file and determine basic parameters of the calculation.
     !*      Sets a default large number of g-vectors and no foil tilt.
     !*      Sets the default atom space assuming no foil tilt.
@@ -231,10 +232,9 @@
             character(len=*),intent(in)                 ::      filename                !   atom position file
             real(kind=real64),intent(in)                ::      T                       !   temperature (K)
             real(kind=real64),intent(in)                ::      V                       !   accelerating voltage (kV)
+            integer,intent(in)                          ::      M                       !   imaging subdivisions per lattice param
             integer,intent(in)                          ::      nPrec                   !   number of many beam copies to use for precession
             real(kind=real64),intent(in)                ::      precAngle               !   precession angle (rad)
-            ! logical,intent(in),optional                 ::      columnar                !   use columnar approximation
-            ! logical,intent(in),optional                 ::      lossy                   !   use imaginary parts of crystal structure factor
             real(kind=real64),intent(in),optional       ::      rho_in                  !   radius of reflections to select
             integer,intent(in),optional                 ::      zlayers                 !   number of layers in rho calculation block (even)
             real(kind=real64),dimension(3,3),intent(in),optional    ::      dfg_bar     !   mean deformation gradient, if input from command line parameters
@@ -243,16 +243,14 @@
             real(kind=real64),dimension(3)              ::      xyz_offset              !   offset of atom positions read from xyz file
             real(kind=real64),dimension(3,3)            ::      a_super                 !   periodic supercell lattice vectors
             integer                                     ::      ii  
-            !real(kind=real64)                           ::      a0                      !   characteristic lattice lengthscale = a0_in(1)
 
             this = IntegrateManyBeams_null()
 
         !---    store some basic facts about the calculation            
-            ! if (present(columnar)) this%columnar = columnar
-            ! if (present(lossy)) isState(LOSSY) = lossy            
             if (present(zlayers)) this%zlayers = zlayers            
             this%T = T
             this%V = V * 1000
+            this%M = M
             this%precAngle = precAngle
             this%nPrec = max(1,nPrec)
             
@@ -307,8 +305,6 @@
             call setR(this%as,RotationMatrix_identity)          
             call setThickness(this%as)   
             call setAtomSpaceSet(this,.true.)
-!            if (rank==0) call report(this%as)            
-            !if (rank==0) print *,""
 
 
         !---    set the default g-vectors, assuming no foil tilt
@@ -343,8 +339,7 @@
             deallocate(this%slice)
             deallocate(this%mb)
       
-            if (this%nAtoms>0)  deallocate(this%r)
-          
+            if (this%nAtoms>0)  deallocate(this%r)          
             
             if (associated(this%grad_arg_x)) deallocate(this%grad_arg_x)         
             if (associated(this%x)) deallocate(this%x)            
@@ -365,7 +360,6 @@
             uu = 6 ; if (present(u)) uu = u
             oo = 0 ; if (present(o)) oo = o
             write(unit=uu,fmt='(a,i6,a)') repeat(" ",oo)//"IntegrateManyBeams [nPrec=",this%nPrec,"]"
-           ! call reportDashboard(uu,oo+4)
             write(unit=uu,fmt='(a,f10.2,a)') repeat(" ",oo+4)//"Temperature      : ",this%T," (K)"
             write(unit=uu,fmt='(a,f10.2,a)') repeat(" ",oo+4)//"Electron voltage : ",this%V," (keV)"
             call report(this%latt,uu,oo+4)
@@ -971,10 +965,7 @@
             if (.not. isCStructFactSet(this)) call errorExit("integrate0 error - structure factors not set")
             if (.not. isImageSpaceSet(this)) call errorExit("integrate0 error - image space not set")
 
-
-            
-            !call computePhaseFields(this,0) 
-
+ 
 
         !---    allocate memory and temporaries needed for RK4 integration
             nx = getNx(this%is)
@@ -982,8 +973,6 @@
             nz = getNz(this%is)
             nG = getn(this%gv)
             call getBounds(this%is,bb)
-        !    bb(1,:) = bb(1,:) - 1           !   buffer pixel
-        !    bb(2,:) = bb(2,:) + 1           !   buffer pixel
             my_nx = bb(2,1)+2*this%border+1-bb(1,1)
             my_ny = bb(2,2)+2*this%border+1-bb(1,2)
             
@@ -1426,11 +1415,11 @@
             end do
             
             call suggestImagingSpace(this%as,Nx,Ny,Nz,theta)
-           ! if (rank==0) print *,"Lib_IntegrateManyBeams::setImagingSpace info - theta = ",theta," Nx,Ny,Nz = ",Nx,Ny,Nz
+            if (rank==0) print *,"Lib_IntegrateManyBeams::setImagingSpace info - theta = ",theta," Nx,Ny,Nz = ",Nx,Ny,Nz
             call setDelta(this%as,Nx,Ny,Nz)             !   can't know the offset until the imaging space is known.
 
             this%is = ImagingSpace_ctor( geta(this),getSigma(this), getdelta(this%as),Nx,Ny,Nz )
-            !if (rank==0) call report(this%is) 
+            if (rank==0) call report(this%is) 
              
 
         !---    can now make my transformation on the atom positions, and store all the periodic copies I need.
@@ -1493,7 +1482,7 @@
             integer,dimension(2,3)                          ::      bb              !   bounds of imaging space
             integer                                         ::      nG              !   number of g-vectors in many beams, not equal to number of phase fields computed
             integer                                         ::      ii,mm ,jx,jy,jz
-            integer                                         ::      iz_high
+            integer                                         ::      iz_high,nz_layers
             real(kind=real64)                               ::      mingrad_arg_x,maxgrad_arg_x,sumgrad_arg_x,modgrad_arg_x
             real                                            ::      nvox
 
@@ -1503,8 +1492,8 @@
             real(kind=real64),dimension(:,:),allocatable,save   ::      gg          !   (3,nG)      g-vectors
 
             
-
-            if (rank==0) write(*,fmt='(6(a,i6))') " Lib_IntegrateManyBeams::computePhaseFields info - zlayer         ",iz,":",min(getnz(this%is),iz+this%zlayers)-1," / ",getnz(this%is)-1
+            nz_layers = min( getnz(this%is) , iz + this%zlayers )
+            if (rank==0) write(*,fmt='(6(a,i6))') " Lib_IntegrateManyBeams::computePhaseFields info - zlayer         ",iz,":",nz_layers-1," / ",getnz(this%is)-1
 
         !---    size of problem                        
             call getBounds(this%is,bb)             
@@ -1524,7 +1513,7 @@
             end if
 
              
-            if (isState(GAUGETRANSFORM)) then
+            if (isState(GAUGETRANSFORM)) then       ! DEPRECATED
             
             !---    we don't need to compute phase factors for all the g-vectors.
             !       g=0 gives a constant, x(g=0) = exp[ -i g.u ] = 1
@@ -1556,7 +1545,7 @@
 
 
             !---    compute the phase factor for my z-slice            
-                iz_high = min( getnz(this%is) , iz + this%zlayers + 1 )
+                iz_high = min( getnz(this%is) , iz + this%zlayers + 1 )      
                 
                 call computePhaseFactor( this%nAtoms,this%r,gg, this%is, getDelta(this%as),iz, iz_high,this%border, this%grad_arg_x,this%rho )
 
@@ -1590,10 +1579,16 @@
 
 
             !this%rho = real( this%rho , kind=real32 )
-            !if ((rank==0).and.LIB_IMB_DBG) print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - minmaxavg rho      ",minval(abs(this%rho)),maxval(abs(this%rho)),sum(abs(this%rho))/(size(this%rho))," (1/A^3) "
+            if (rank==0) then
+                if (LIB_IMB_DBG) &
+                print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - minmaxavg rho      ",minval(abs(this%rho)),maxval(abs(this%rho)),sum(abs(this%rho))/(size(this%rho))," (1/A^3) "
+            end if
+            
             this%rho = densityScale( this%rho, real(this%omega0/geta(this)**3,kind=real32 ) )
-            if (LIB_IMB_DBG .and.(rank==0)) print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - minmaxavg rho'     ",minval(abs(this%rho)),maxval(abs(this%rho)),sum(abs(this%rho))/(size(this%rho))
-
+            if (rank==0) then
+                if (LIB_IMB_DBG) &
+                print *,"Lib_IntegrateManyBeams::computePhaseFields dbg - minmaxavg rho'     ",minval(abs(this%rho)),maxval(abs(this%rho)),sum(abs(this%rho))/(size(this%rho))
+            end if
 
         !---    dump of atom positions and z-slice
             if (isState(OPXYZ) .and. (iz==0)) then   
@@ -1614,7 +1609,7 @@
                         end do                    
                     close(unit=500)
                 else
-                    print *,"Lib_IntegrateManyBeams::computePhaseFields info - rank ",rank," writing x slice to .xyz"
+                    print *,"Lib_IntegrateManyBeams::computePhaseFields info - rank ",rank," writing x slice to """//trim(numberFile(trim(opxyz_file_prefix),rank,"xyz"))//""""
                     open(unit=500,file=trim(numberFile(trim(opxyz_file_prefix),rank,"xyz")),action="write")
                         write(unit=500,fmt='(i8)') this%nAtoms + (bb(2,1)+2*this%border+1-bb(1,1))*(bb(2,2)+2*this%border+1-bb(1,2))*this%zlayers
                         write(unit=500,fmt='(a,9f12.6,a)') "Lattice=""",getA_super(this%as),""" Properties=Species:S:1:Pos:R:3:rho:R:1:Re(x):R:1:Im(x):R:1"
@@ -1680,7 +1675,7 @@
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      returns width of blurring used to construct phase fields
             type(IntegrateManyBeams),intent(in)           ::      this            
-            getSigma0 = this%a0/this%M
+            getSigma0 = this%a0/2
             return
         end function getSigma0
 
@@ -1691,6 +1686,14 @@
             getA0 = this%a0/this%M
             return
         end function getA0
+
+        
+        pure integer function getnBuf0(this) 
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            type(IntegrateManyBeams),intent(in)          ::      this
+            getnBuf0 = getnBuf(this%is)
+            return
+        end function getnBuf0
  
 
     !---    calculation status

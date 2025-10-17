@@ -59,14 +59,11 @@
         character(len=8)                    ::      latticename = UNKNOWN_LATTICE
         real(kind=real64)                   ::      T = 300.0d0             !   temperature (K)
         real(kind=real64)                   ::      V = 200.0d0             !   accelerator voltage (kV)
+        integer                             ::      M = 4                   !   image subdivisions per lattice param
         real(kind=real64),dimension(3)      ::      a0_in = 0.0             !   indicative lattice parameter (A)
         integer                             ::      nPrec = 1               !   precession angles
         real(kind=real64)                   ::      precAngle = 0.003d0     !   precession angle (rad)
-        !logical                             ::      opPng = .true.          !   should we automatically output a png file
         logical                             ::      attset = .false.        
-        ! logical                             ::      columnar = .true.       !   use columnar approximation
-        ! logical                             ::      lossy = .false.         !   use imaginary parts of crystal structure factor
-        ! logical                             ::      twobeam = .false.       !   two-beam mode
         integer,dimension(:),allocatable    ::      hkl                     !   the g-vector for the aperture. allocatable because its either hkl or hjkl 
         logical                             ::      yflip = .true.          !   Right-hand rule for png output - y=0 at bottom.
         logical                             ::      pngBlur = .true.        !   blurring radius sigma/a
@@ -74,8 +71,6 @@
         real(kind=real64)                   ::      n_g = 1                 !   which reflection to make bright
         logical                             ::      df = .true.             !   find dark field        
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
-        !logical                             ::      opDiffPatt = .true.     !   output diffraction pattern
-        !logical                             ::      gauge = .false.         !   apply gauge transform
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
         real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
         real(kind=real64)                   ::      imin = 0.001d0          !   intensity threshold for "important" beam
@@ -143,7 +138,7 @@
         call setState(GAUGETRANSFORM,.false.)
         call setState(OPXYZ,.false.)
         call setState(OPPNG,.true.)
-        call setState(OPDIFF,.true.)
+        call setState(OPDIFF,.false.)
 
 
 !******************************************************************************    
@@ -213,18 +208,13 @@
 
         call get( cla,"imin",imin,LIB_CLA_OPTIONAL,"       intensity threshold for beam selection",CLA_CALC )         
         call get( cla,"zlayers",zlayers,LIB_CLA_OPTIONAL,"    number of z-layers in rho calculation block",CLA_CALC )         
+        call get( cla,"M",M,LIB_CLA_OPTIONAL,"          number of image subdivisions per lattice parameter",CLA_CALC )         
 
         
         attset = isState(GAUGETRANSFORM)
         call get( cla,"gauge",attset ,LIB_CLA_OPTIONAL,"      use gauge transformation (deprecated)",CLA_CALC )                 
         if (hasArgument(cla,"gauge")) call setState(GAUGETRANSFORM,attset)
-
-!        !call get( cla,"gauge",gaugeTransform,LIB_CLA_OPTIONAL,"      use gauge transform",CLA_CALC )
-        
-
-
-        !call get( cla,"png",isState(OPPNG) ,LIB_CLA_OPTIONAL,"        output result as .png file",CLA_OUTPUT)              
-
+ 
         attset = isState(OPXYZ)
         call get( cla,"opxyz",attset ,LIB_CLA_OPTIONAL,"      output phase field",CLA_OUTPUT )                 
         if (hasArgument(cla,"opxyz")) call setState(OPXYZ,attset)
@@ -241,7 +231,6 @@
         call get( cla,"blur",pngBlur ,LIB_CLA_OPTIONAL,"       blur .png file by smoothing width sigma",CLA_OUTPUT )                                                        
         call get( cla,"norm",pngNorm ,LIB_CLA_OPTIONAL,"       normalise .png file intensity",CLA_OUTPUT )                                                        
         call get( cla,"yflip",yflip ,LIB_CLA_OPTIONAL,"      output png with y=0 at bottom, to match ovito orientation z out of screen",CLA_OUTPUT )                 
-!        call get( cla,"opDP",opDiffPatt ,LIB_CLA_OPTIONAL,"       output diffraction pattern",CLA_OUTPUT )                 
         call get( cla,"dbg",dbg ,LIB_CLA_OPTIONAL,"        additional debug output",CLA_OUTPUT )                 
         if (rank==0) call report(cla)
         if (hasHelpArgument(cla)) call errorExit("done")
@@ -361,20 +350,15 @@
             print *,"   calculation settings"
             print *,"   ^^^^^^^^^^^^^^^^^^^^"
             call reportDashboard(o=8)
-            ! print *,"       use columnar approx     ",columnar
-            ! print *,"       inelastic scattering    ",lossy
-            ! print *,"       two beam mode           ",twobeam
             if (.not. isState(TWOBEAM)) &
             print *,"       beam intensity thresh   ",imin   
             print *,"       size of rho calc block  ",zlayers
-!            print *,"       gauge transform         ",gaugeTransform
             print *,""
 
             print *,"   output settings"
             print *,"   ^^^^^^^^^^^^^^^"
             if (isState(OPPNG)) &
             print *,"       output .png  blur       ",pngBlur," normalised? ",pngNorm
-            !print *,"       output diff patt        ",opDiffPatt 
             print *,"       debug mode              ",dbg
             print *,""  
 
@@ -410,9 +394,9 @@
     !---    constructor - read input file and determine parameters of calculation
         !tt(T_CTOR) = Callipers_ctor()
         if (specifiedUmat) then
-            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers, dfg_bar = reshape( Umat,(/3,3/))  )
+            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,M, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers, dfg_bar = reshape( Umat,(/3,3/))  )
         else
-            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers )
+            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,M, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers )
         end if
         call pause(tt(T_INIT))
 
@@ -538,9 +522,10 @@
                 write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - minmaxavg img ",minval(img),maxval(img),sum(img)/(Nx*Ny)
 
 
-                if ((rank==0).and. pngBlur) call blurImg( img, 2*getSigma( imb )/getA( imb ) )
- 
-
+                if (pngBlur) then
+                    dd = getSigma( imb )/getA( imb )
+                    call blurImg( img, dd ) 
+                end if
 
                 if (yflip) then
                     !   flip image in y-axis
@@ -553,7 +538,10 @@
                         end do
                     end do
                 end if
-                call writePng( trim(outfile)//".png",img,normalise=pngNorm )
+
+                ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
+                call writePng( trim(outfile)//".png",img(ix:Nx-1-ix,ix:Ny-1-ix),normalise=pngNorm )
+
             end if
             call pause(tt(T_OUTPUT))
         end if
@@ -579,9 +567,6 @@
         end if
 
         if (rank==0) then
-            print *,""
-            print *,"bye bye"
-            print *,"^^^^^^^"
             print *,""
         end if
         call errorExit("done")
@@ -934,6 +919,7 @@
                 print *,"run_SimulatedTEM::outputDiffractionPattern info - minmax img ",minval(img),maxval(img)
                 call writePng( trim(prefix)//".diff.png",img )
             end if
+
             return
         end subroutine outputDiffractionPattern
 
