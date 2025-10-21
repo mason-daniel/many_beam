@@ -178,7 +178,7 @@
         call get( cla,"ntilt",ntilt,LIB_CLA_OPTIONAL,"      number of foil tilt angles considered",CLA_MICRO )           
         call get( cla,"tweak",tweak,LIB_CLA_OPTIONAL,"      fine-tune tweak angle as fraction of theta",CLA_MICRO )           
         ii=9; call get( cla,"R",Rmat,ii,LIB_CLA_OPTIONAL,"          specify tilt matrix",CLA_MICRO )           
-        ii=9; call get( cla,"U",Umat,ii,LIB_CLA_OPTIONAL,"          specify crystal orientation in input file",CLA_MICRO )           
+        ii=9; call get( cla,"U",Umat,ii,LIB_CLA_OPTIONAL,"          specify crystal orientation in input file - if x axis is [uvw] then U=ux,uy,uz,vx...wz",CLA_MICRO )           
 
 
         ii=0; dat = LIB_CLA_NODEFAULT_I; call get( cla,"g",dat,ii ,LIB_CLA_REQUIRED,"            g-vector reflection to output",CLA_DIFF )
