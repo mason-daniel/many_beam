@@ -109,9 +109,13 @@
             module procedure    getLatticeConstant0
             module procedure    getLatticeConstant1
         end interface
-        
 
-        interface getLatticeName
+        interface       whichElement  
+            module procedure        whichElement0
+            module procedure        whichElement1
+        end interface
+
+        interface       getLatticeName
             module procedure        getLatticeName0
         end interface
         
@@ -137,25 +141,46 @@
 
 
     
-        pure integer function whichElement(el)
+        pure integer function whichElement0(el)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      return the element code for the element.
     !*      note: this is not the atomic number or mass, but the position in the ELNAMES table
             character(len=*),intent(in)         ::      el
             character(len=len(el))              ::      el_uc
             integer         ::      ii
+            whichElement0 = 0
             el_uc = convertUpperCase(el) 
             do ii = 1,NELNAMES
                 !print *,ii,""""//trim(el_uc)//""" """//trim(convertUpperCase(ELNAMES(ii)) )//""" ",(trim(el_uc) == trim(convertUpperCase(ELNAMES(ii)) ))
                 if (trim(el_uc) == trim(convertUpperCase(ELNAMES(ii)) )) then
-                    whichElement = ii
+                    whichElement0 = ii
                     return
                 end if
             end do
-            whichElement = 0
+            
             return
-        end function whichElement
+        end function whichElement0
 
+
+    
+        pure integer function whichElement1(m)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      return the element code for the element by mass.
+    !*      note: this is not the atomic number or mass, but the position in the ELNAMES table
+            real(kind=real64),intent(in)        ::      m
+            integer                 ::      ii
+            real(kind=real64)       ::      dm,bestdm
+            bestdm = huge(1.0)
+            whichElement1 = 0
+            do ii = 1,NELNAMES
+                dm = abs(m - ELMASS(ii))
+                if (dm<bestdm) then
+                    bestdm = dm
+                    whichElement1 = ii
+                end if
+            end do
+            return
+        end function whichElement1
 
 
 

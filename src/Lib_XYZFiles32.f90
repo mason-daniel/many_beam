@@ -38,7 +38,7 @@
 !*
 !*-----
 !*
-
+        use Lib_Elements
         use NBAX_StringTokenizers
         use iso_fortran_env
         implicit none
@@ -113,26 +113,26 @@
 
         integer,public,parameter        ::      XYZFILE_FILENAMELENGTH = 2048
         integer,public,parameter        ::      XYZFILE_COMMENTLINELENGTH = 256
-        integer,public,parameter        ::      XYZFILE_ATOMNAMELENGTH = 6
+        integer,public,parameter        ::      XYZFILE_ATOMNAMELENGTH = ELNAME_LEN
         character(len=1),dimension(3),parameter     ::  XYZFILE_COMMENT = (/ "#","%","!" /)     !   line treated as comment if starts with this character
         
         
-        integer,private,parameter       ::      XYZFILE_NATOMSIDBYMASS = 54
-        character(len=2),dimension(XYZFILE_NATOMSIDBYMASS),private,parameter        ::    XYZFILE_ATOMSIDBYMASS_NAME = (/   & 
-                        "H ","D ","T ","He"                                         &
-                       ,'Li','Be','C ','O ','Na','Mg','Al','Si','K '                    &
-                       ,'Ca','Ti','V ','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge'     &
-                       ,'As','Rb','Sr','Y ','Zr','Nb','Mo','Ru','Rh','Pd','Ag','Cd'     &
-                       ,'Sn','Cs','Ba','La','Ce','Gd','Hf','Ta','W ','Re','Os','Ir'     &
-                       ,'Pt','Au','Tl','Pb','Th' /)  
+        ! integer,private,parameter       ::      XYZFILE_NATOMSIDBYMASS = 54
+        ! character(len=2),dimension(XYZFILE_NATOMSIDBYMASS),private,parameter        ::    XYZFILE_ATOMSIDBYMASS_NAME = (/   & 
+        !                 "H ","D ","T ","He"                                         &
+        !                ,'Li','Be','C ','O ','Na','Mg','Al','Si','K '                    &
+        !                ,'Ca','Ti','V ','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge'     &
+        !                ,'As','Rb','Sr','Y ','Zr','Nb','Mo','Ru','Rh','Pd','Ag','Cd'     &
+        !                ,'Sn','Cs','Ba','La','Ce','Gd','Hf','Ta','W ','Re','Os','Ir'     &
+        !                ,'Pt','Au','Tl','Pb','Th' /)  
                
-        real(kind=real64),dimension(XYZFILE_NATOMSIDBYMASS),private,parameter       ::    XYZFILE_ATOMSIDBYMASS_MASS = (/   &
-                        1.0d0 , 2.0d0 , 3.0d0 , 4.003d0                                     &
-                        ,7.0d0,9.012183d0,12.011d0,15.999d0,22.9897693d0,24.305d0,26.981538d0,28.085d0,39.0983d0                                 &
-                        ,40.08d0,47.867d0,50.9415d0,51.996d0,54.93804d0,55.84d0,58.93319d0,58.693d0,63.55d0,65.4d0,69.723d0,72.63d0              &
-                        ,74.92159d0,85.468d0,87.62d0,88.90584d0,91.22d0,92.90637d0,95.95d0,101.1d0,102.9055d0,106.42d0,107.868d0,112.41d0        &
-                        ,118.71d0,132.9054520d0,137.33d0,138.9055d0,140.116d0,157.2d0,178.49d0,180.9479d0,183.84d0,186.207d0,190.2d0,192.22d0    &
-                        ,195.08d0,196.96657d0,204.383d0,207d0,232.038d0  /)
+        ! real(kind=real64),dimension(XYZFILE_NATOMSIDBYMASS),private,parameter       ::    XYZFILE_ATOMSIDBYMASS_MASS = (/   &
+        !                 1.0d0 , 2.0d0 , 3.0d0 , 4.003d0                                     &
+        !                 ,7.0d0,9.012183d0,12.011d0,15.999d0,22.9897693d0,24.305d0,26.981538d0,28.085d0,39.0983d0                                 &
+        !                 ,40.08d0,47.867d0,50.9415d0,51.996d0,54.93804d0,55.84d0,58.93319d0,58.693d0,63.55d0,65.4d0,69.723d0,72.63d0              &
+        !                 ,74.92159d0,85.468d0,87.62d0,88.90584d0,91.22d0,92.90637d0,95.95d0,101.1d0,102.9055d0,106.42d0,107.868d0,112.41d0        &
+        !                 ,118.71d0,132.9054520d0,137.33d0,138.9055d0,140.116d0,157.2d0,178.49d0,180.9479d0,183.84d0,186.207d0,190.2d0,192.22d0    &
+        !                 ,195.08d0,196.96657d0,204.383d0,207d0,232.038d0  /)
         
         logical,public              ::      LIBXYZ_DBG = .false.                                                                            
         integer,public,parameter    ::      LIBXYZ_COL_STRING = 0
@@ -3548,31 +3548,42 @@
     !*      attempt to id an atom by mass. 
             real(kind=real64),intent(in)            ::      m
             character(len=XYZFILE_ATOMNAMELENGTH)   ::      name 
-            integer         ::      ii
-            name = "unset"
-            do ii = 1,XYZFILE_NATOMSIDBYMASS
-                if ( abs(m - XYZFILE_ATOMSIDBYMASS_MASS(ii))<0.50d0 ) then   
-                    !   close enough.
-                    name = XYZFILE_ATOMSIDBYMASS_NAME(ii)
-                    return
-                end if
-            end do
+
+            name = getElementName( whichElement(m) )
+        
+
+            ! integer                 ::      ii,besti
+            ! real(kind=real64)       ::      dm,bestdm
+            ! name = "unset"
+            ! bestdm = huge(1.0)
+            ! do ii = 1,XYZFILE_NATOMSIDBYMASS
+            !     dm = abs(m - XYZFILE_ATOMSIDBYMASS_MASS(ii))
+            !     if (dm<bestdm) then
+            !         bestdm = dm
+            !         besti = ii
+            !     end if
+            ! end do
+            
+            ! name = XYZFILE_ATOMSIDBYMASS_NAME(besti)
             return
         end function idByMass
             
         function getMass0(name) result(m)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      attempt to find mass from id 
-            character(len=XYZFILE_ATOMNAMELENGTH),intent(in)    ::      name 
-            real(kind=real64)                                   ::      m
-            integer         ::      ii
-            m = 1.0d0       !   don't know.
-            do ii = 1,XYZFILE_NATOMSIDBYMASS
-                if (trim(name)==trim(XYZFILE_ATOMSIDBYMASS_NAME(ii))) then
-                    m = XYZFILE_ATOMSIDBYMASS_MASS(ii)
-                    return
-                end if
-            end do
+            character(len=*),intent(in)     ::      name 
+            real(kind=real64)               ::      m
+
+            m = getElementMass( name )
+
+            ! integer         ::      ii
+            ! m = 1.0d0       !   don't know.
+            ! do ii = 1,XYZFILE_NATOMSIDBYMASS
+            !     if (trim(name)==trim(XYZFILE_ATOMSIDBYMASS_NAME(ii))) then
+            !         m = XYZFILE_ATOMSIDBYMASS_MASS(ii)
+            !         return
+            !     end if
+            ! end do
             return
         end function getMass0
         
