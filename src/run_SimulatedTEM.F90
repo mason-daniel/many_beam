@@ -69,7 +69,7 @@
         logical                             ::      pngBlur = .true.        !   blurring radius sigma/a
         logical                             ::      pngNorm = .true.        !   normalise output intensity
         real(kind=real64)                   ::      n_g = 1                 !   which reflection to make bright
-        logical                             ::      df = .true.             !   find dark field        
+        logical                             ::      df = .true. , bf = .false.            !   find dark field        
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
         real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
@@ -151,7 +151,7 @@
         
         
     !---    read command line arguments
-        cla = CommandLineArguments_ctor(30)  
+        cla = CommandLineArguments_ctor(40)  
         call setCategories(cla,(/   "file handling         ",       &
                                     "microscope settings   ",       &
                                     "diffraction conditions",       &
@@ -190,8 +190,10 @@
         call get( cla,"nPrecAngle",nPrec ,LIB_CLA_OPTIONAL," number of precession images to take",CLA_DIFF )                                                        
         call get( cla,"precAngle",precAngle ,LIB_CLA_OPTIONAL,"  precession angle (rad)",CLA_DIFF )             
         df = (n_g /= 1.0d0)
-        call get( cla,"dark",df ,LIB_CLA_OPTIONAL,"       tweak foil tilt to find close dark field",CLA_DIFF )                 
-
+        call get( cla,"dark",df ,LIB_CLA_OPTIONAL,"       output dark field image",CLA_DIFF )                 
+        call get( cla,"bright",bf ,LIB_CLA_OPTIONAL,"       output bright field image (set -bf or -df not both!)",CLA_DIFF )                 
+        if (hasArgument(cla,"bright")) df = .not. bf
+        
     !---    set major runtime attributes        
         attset = isState(COLUMNAR)
         call get( cla,"col",attset ,LIB_CLA_OPTIONAL,"        use columnar approximation",CLA_CALC )                 
@@ -248,6 +250,11 @@
         end if
         if ((rank==0) .and. .not. hasArgument(cla,"f")) print *,"error - expected argument '-f <filename>'"
         if ((rank==0) .and. .not. allocated(hkl)) print *,"error - expected argument '-g h,k,l' or '-g h,i,k,l'"
+
+
+        if (hasArgument(cla,"bright") .and. hasArgument(cla,"dark")) then
+            if (rank==0) print *,"warning - used both -bf and -df"
+        end if
 
 
         if (.not. hasArgument(cla,"o")) then
@@ -342,9 +349,14 @@
             print *,"   ^^^^^^^^^^^^^^^^^^^^^"
             write(*,fmt='(a,4i3,a)') "        output g-vector         ",hkl
             print *,"       number precession imgs  ",nPrec
+            if (nPrec>1) &
             write(*,fmt='(a,f12.6,a)') "        precession angle        ",precAngle," (rad)"
             write(*,fmt='(a,f12.3,a)') "        bright reflection n_g = ",n_g
-            print *,"       dark field tweak?       ",df
+            if (df) then
+                print *,"       output dark field image"
+            else
+                print *,"       output bright field image (hkl = [000])"
+            end if
             print *,""
 
             print *,"   calculation settings"
@@ -511,9 +523,12 @@
                 print *,"^^^^^^^^^^^"
             end if
             
-            call getIntensity( imb,hkl,img )      !   gathers result on rank 0
- 
-
+            if (df) then
+                call getIntensity( imb,hkl,img )      !   gathers result on rank 0
+            else
+                hkl = 0
+                call getIntensity( imb,hkl,img )      !   gathers result on rank 0
+            end if
 
             if (rank==0) then
                 Nx = size(img,dim=1)

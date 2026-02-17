@@ -649,10 +649,11 @@
 
         !---    which g-vector is this?
             ii = whichg(this%gv,hkl)
-            if (ii==0) then
-                if (rank==0) print *,"Lib_IntegrateManyBeams::getIntensity0 error - looking for reflection ",hkl
-                call errorExit("getIntensity0 error - did not recognise g-vector as one of set")
-            end if
+            ! if (ii==0) then
+            !     if (rank==0) print *,"Lib_IntegrateManyBeams::getIntensity0 error - looking for reflection ",hkl
+            !     call errorExit("getIntensity0 error - did not recognise g-vector as one of set")
+            ! end if
+            !   if ii == 0 then returns the bright field image, phi( 0,:,: )
 
         !---    allocate space for output image
             nx = getNx(this%is)
