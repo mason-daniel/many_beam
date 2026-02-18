@@ -388,6 +388,7 @@
             integer,dimension(size(hkl_in,dim=1),1)     ::      hkl_out
             hkl_out(:,1) = hkl_in(:)
             call changeGvectors1(this,rule = LIB_IMB_KEEP_ALL_GVEC,hkl_in = hkl_out)
+            !call changeGvectors1(this,rule = LIB_IMB_BLOCK_HIGH_SG,hkl_in = hkl_out)
             return
         end subroutine changeGvectors0
 
@@ -822,7 +823,7 @@
                 call errorExit("selectFoilTilt error - could not find desired reflection in set")
             end if
 
-            !print *,"selectFoilTilt ",hkl,bright," g-vector ",kk
+            if (rank==0) print *,"Lib_IntegrateManyBeams::selectFoilTilt info - g = ",hkl," bright? ",bright," g-vector index ",kk
         !---    select the orientation of the foil tilts
             call fibonacci_cap(RR(:,3,:),theta_max)            
             
@@ -849,6 +850,8 @@
                 if (bright) then
                     Ig_R(kk) = 0.0d0                
                     qq = Ik_R - maxval(Ig_R(1:nG))              !   high if selected reflection is bright                    
+                    !print *,"Lib_IntegrateManyBeams::selectFoilTilt info - tilt ",ii," intensity ",Ik_R," max ",maxval(Ig_R(1:nG))," score ",qq
+                    !if (qq/=qq) stop
                 else
                     qq = 1 - Ik_R                               !   high if selected reflection is dark
                 end if

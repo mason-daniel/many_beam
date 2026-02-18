@@ -9,11 +9,14 @@
 !*      
 !*      version history
 !*          v.0.0.1         Oct 24      First working version
+!*          v.0.0.2         Feb 26      bright field vs dark field imaging permitted. 
+!*          v.0.0.3         Feb 26      Fix to selection rules - thanks to Thomas Jourdan (CEA) for spotting mod vs modulo bug
+
 
 !*      good break points to set (GDB)
-!*      b run_SimulatedTEM.f90:274            !   after command line params
-!*      b run_SimulatedTEM.f90:296            !   after initialisation
-!*      b run_SimulatedTEM.f90:352            !   after foil tilt
+!*      b run_SimulatedTEM.f90:287           !   after command line params
+!*      b run_SimulatedTEM.f90:414           !   after initialisation
+!*      b run_SimulatedTEM.f90:460           !   after foil tilt
 
 
 
@@ -209,7 +212,7 @@
 
 
         call get( cla,"imin",imin,LIB_CLA_OPTIONAL,"       intensity threshold for beam selection",CLA_CALC )         
-        call get( cla,"zlayers",zlayers,LIB_CLA_OPTIONAL,"    number of z-layers in rho calculation block",CLA_CALC )         
+        call get( cla,"zlayers",zlayers,LIB_CLA_OPTIONAL,"    number of z-layers in rho calculation block - reduce to lower memory footprint",CLA_CALC )         
         call get( cla,"M",M,LIB_CLA_OPTIONAL,"          number of image subdivisions per lattice parameter",CLA_CALC )         
 
         
@@ -228,7 +231,7 @@
 
         attset = isState(OPDIFF)
         call get( cla,"opDP",attset ,LIB_CLA_OPTIONAL,"       output diffraction pattern",CLA_OUTPUT )                 
-        if (hasArgument(cla,"png")) call setState(OPDIFF,attset)
+        if (hasArgument(cla,"opDP")) call setState(OPDIFF,attset)
 
         call get( cla,"blur",pngBlur ,LIB_CLA_OPTIONAL,"       blur .png file by smoothing width sigma",CLA_OUTPUT )                                                        
         call get( cla,"norm",pngNorm ,LIB_CLA_OPTIONAL,"       normalise .png file intensity",CLA_OUTPUT )                                                        
@@ -348,6 +351,7 @@
             print *,"   diffraction condition"
             print *,"   ^^^^^^^^^^^^^^^^^^^^^"
             write(*,fmt='(a,4i3,a)') "        output g-vector         ",hkl
+            if (isState(TWOBEAM)) print *,"       two beam approximation"
             print *,"       number precession imgs  ",nPrec
             if (nPrec>1) &
             write(*,fmt='(a,f12.6,a)') "        precession angle        ",precAngle," (rad)"
@@ -670,7 +674,7 @@
             integer                             ::      ii,jj
 
 
-            if ( dark.and.(rank==0) ) print *," tiltFoil warning - ""dark"" option for expansion, not currently used"
+            if ( dark.and.(rank==0) ) print *,"tiltFoil info - ""dark"" option not currently used in tiltFoil"
 
             MillerBravais = (size(hkl)==4)
             form = "(a,3i4,a,f16.8)"
@@ -686,6 +690,7 @@
             if (tilt_max<=0) return
  
             if (specifiedRmat) then
+
                 foil_tilt = reshape( Rmat , (/3,3/) )
                 call restoreUnitaryness( foil_tilt )
                 call applyFoilTilt( imb,foil_tilt )
@@ -696,8 +701,9 @@
                         hkl_bright = ceiling( hkl * n_g )
                     end if
                     call perfectLatticeIntensity(imb,hkl_bright,maxIntensity,I_g)
-                    write(*,fmt=form) " tiltFoil info - perfect lattice intensity at ",hkl_bright," after tilt ",I_g
+                    write(*,fmt=form) " tiltFoil info - perfect lattice intensity at ",hkl_bright," after user specified tilt ",I_g
                 end if
+
             else
         
                 if (.not. ( (n_g==1.0).and.df) ) then
@@ -728,6 +734,10 @@
                         end if
 
                     end if            
+                    if (rank==0) then
+                        call perfectLatticeIntensity(imb,hkl_bright,maxIntensity,I_g)
+                        write(*,fmt=form) " tiltFoil info - perfect lattice intensity ",hkl_bright," before tilt ",I_g
+                    end if
                     if (rank==0) print *,""
                     call applyFoilTilt(imb,foil_tilt)
                     if (rank==0) then

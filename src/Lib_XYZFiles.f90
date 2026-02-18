@@ -435,7 +435,7 @@
                     
                     write (unit=uu,fmt='(a)') repeat(" ",oo+2)//"atom counts"
                     do jj = 1,this%nAtomNames
-                        write (unit=uu,fmt='(a,i8,a,f7.3,a)' ) repeat(" ",oo+4)//this%atomName(jj),atom_count(jj)," (",atom_count(jj)*100.0d0/this%nAtoms," %)"
+                        write (unit=uu,fmt='(a,i12,a,f7.3,a)' ) repeat(" ",oo+4)//this%atomName(jj),atom_count(jj)," (",atom_count(jj)*100.0d0/this%nAtoms," %)"
                     end do               
                     
                              

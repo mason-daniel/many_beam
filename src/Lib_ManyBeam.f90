@@ -264,17 +264,17 @@
             gg = 0
             if (isMillerBravais(this%gv)) then
                 write(unit=uu,fmt='(a,a16,3a12,2a36)') repeat(" ",oo+4),"Miller-Bravais","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
-                write(unit=uu,fmt='(a,4i4,9f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
+                write(unit=uu,fmt='(a,4i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
                     gg = getG(this%gv,ii)
-                    write(unit=uu,fmt='(a,4i4,9f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg(:),this%kplusgonk(:,ii)
+                    write(unit=uu,fmt='(a,4i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg(:),this%kplusgonk(:,ii)
                 end do
             else
                 write(unit=uu,fmt='(a,a12,3a12,2a36)') repeat(" ",oo+4),"Miller index","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
-                write(unit=uu,fmt='(a,3i4,9f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
+                write(unit=uu,fmt='(a,3i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
                     gg = getG(this%gv,ii)
-                    write(unit=uu,fmt='(a,3i4,9f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg,this%kplusgonk(:,ii)
+                    write(unit=uu,fmt='(a,3i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg,this%kplusgonk(:,ii)
                 end do
             end if
 
@@ -444,18 +444,37 @@
             integer                                                 ::      jj
             complex(kind=real64)                                    ::      phi
             integer                                                 ::      dz        
-            real(kind=real64)                   ::       deltaz
+            real(kind=real64)                   ::       deltaz,Sg_max
        
 
         !---    the transform matrix is non-hermitian if it is lossy.
         !       compute the transform matrix for the perfect crystal
 
             if (present(Sg)) then            
-                call propagationMatrix( this, MM, Sg=Sg )    
+                call propagationMatrix( this, MM, Sg=Sg )                    
+                !print *,"Sg ",minval(Sg),":",maxval(Sg)
+
             else
                 call propagationMatrix( this, MM )    
             end if
 
+        !---    cut unstable terms - the set of g-vectors may not have been finalised yet
+            Sg_max = 0.25d0/(PI*this%a)     !   this is the "LIB_IMB_BLOCK_HIGH_SG" selection rule - | 2 pi Sg a | < 1/2
+            if (present(Sg)) then
+                do ii = 1,this%nG            
+                    if (abs(Sg(ii))>Sg_max) then
+                        MM(ii,:) = 0.0d0
+                        MM(:,ii) = 0.0d0
+                    end if
+                end do
+            else
+                do ii = 1,this%nG           
+                    if (abs(this%Sg(ii))>Sg_max) then
+                        MM(ii,:) = 0.0d0
+                        MM(:,ii) = 0.0d0
+                    end if
+                end do
+            end if
 
     
         !---    now propagate through a crystal of thickness L 
@@ -471,6 +490,9 @@
             
 
             Ig_max = 0.0d0 ; Ig_max(0) = 1.0d0                      !   record maximum intensities as we progress through the block
+
+            !print *,"this%kplusgonk ",minval(this%kplusgonk(3,:)),":",maxval(this%kplusgonk(3,:))
+
 
             do ii = 0,nz-2,2
                 dz = 0
@@ -632,7 +654,7 @@
             real(kind=real32),intent(in),optional                   ::      rho
             real(kind=real32),dimension(:,:),intent(in),optional    ::      grad_arg_x              !   (3,1:nG)
             real(kind=real64),dimension(0:),intent(in),optional     ::      Sg
-
+            real(kind=real64)       ::      Sg_max
             integer                 ::      ii  
             ! complex(kind=real64)    ::      y_g         !   y_g = x_g* ( (k+g)/|k| ) . grad x_g
 
@@ -667,6 +689,24 @@
                         M(ii,ii) =  M(ii,ii) + dot_product( this%kplusgonk(:,ii),grad_arg_x(:,ii) )
                     end do
                 end if
+            end if
+
+        !---    cut unstable terms
+            Sg_max = 0.25d0/(PI*this%a)
+            if (present(Sg)) then
+                do ii = 1,this%nG            
+                    if (abs(Sg(ii))>Sg_max) then
+                        M(ii,:) = 0.0d0
+                        M(:,ii) = 0.0d0
+                    end if
+                end do
+            else
+                do ii = 1,this%nG           
+                    if (abs(this%Sg(ii))>Sg_max) then
+                        M(ii,:) = 0.0d0
+                        M(:,ii) = 0.0d0
+                    end if
+                end do
             end if
 
             return

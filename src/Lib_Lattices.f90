@@ -737,12 +737,12 @@
                                 
                                 select case(this%latt)
                                     case( LATTICE_FCC )
-                                        hx = mod( hp, 2 ) 
-                                        kx = mod( kp, 2 )
-                                        lx = mod( lp, 2 )
+                                        hx = modulo( hp, 2 ) 
+                                        kx = modulo( kp, 2 )
+                                        lx = modulo( lp, 2 )
                                         ok = ( hx*hx + kx*kx + lx*lx ) - ( hx*kx + kx*lx + lx*hx ) == 0     !   true if all odd or all even.
                                     case( LATTICE_BCC )
-                                        ok = mod( hp+kp+lp,2 ) == 0     !   true if sum is even
+                                        ok = modulo( hp+kp+lp,2 ) == 0     !   true if sum is even
                                     case default
                                         ok = .true.
                                 end select
@@ -762,7 +762,7 @@
                                 if (rr > rho*rho + 1.0d-6) cycle
                                 
                                 if (.not. (abs(hp)>=abs(kp)) ) cycle                                                                         
-                                ok = .not. ( (mod( hp+2*kp,3 )==0) .and. (mod( abs(lp),2 )==1) )         !   false if h+2k is modulo 3 and l is odd   
+                                ok = .not. ( (modulo( hp+2*kp,3 )==0) .and. (mod( abs(lp),2 )==1) )         !   false if h+2k is modulo 3 and l is odd   
                                                             
                                 if (ok) then
                                     write (*,fmt='(3i4)') hp,kp,lp 
@@ -805,17 +805,17 @@
                             select case(this%latt)
                                 case( LATTICE_FCC )
                                     if (rr > rho*rho + 1.0d-6) cycle
-                                    hx = mod( hp, 2 )
-                                    kx = mod( kp, 2 )
-                                    lx = mod( lp, 2 )
+                                    hx = modulo( hp, 2 )
+                                    kx = modulo( kp, 2 )
+                                    lx = modulo( lp, 2 )
                                     ok = ( hx*hx + kx*kx + lx*lx ) - ( hx*kx + kx*lx + lx*hx ) == 0     !   true if all odd or all even.
                                 case( LATTICE_BCC )                                 
                                     if (rr > rho*rho + 1.0d-6) cycle
-                                    ok = mod( hp+kp+lp,2 ) == 0     !   true if sum is even
+                                    ok = modulo( hp+kp+lp,2 ) == 0     !   true if sum is even
                                 case( LATTICE_HCP )
                                     rr = floor( (hp+kp)*(hp+kp) + (hp-kp)*(hp-kp)/3 + lp*lp*0.375d0 )
                                     if (rr > rho*rho + 1.0d-6) cycle                                                        
-                                    ok = .not. ( (mod( hp+2*kp,3 )==0) .and. (mod( abs(lp),2 )==1) )         !   false if h+2k is modulo 3 and l is odd            
+                                    ok = .not. ( (modulo( hp+2*kp,3 )==0) .and. (mod( abs(lp),2 )==1) )         !   false if h+2k is modulo 3 and l is odd            
                                 case default
                                     if (rr > rho*rho + 1.0d-6) cycle
                                     ok = .true.
