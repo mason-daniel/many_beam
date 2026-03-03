@@ -695,11 +695,12 @@
                 call restoreUnitaryness( foil_tilt )
                 call applyFoilTilt( imb,foil_tilt )
                 if (rank==0) then
-                    if (n_g - floor(n_g) < 0.5) then
-                        hkl_bright = floor( hkl * n_g )
-                    else
-                        hkl_bright = ceiling( hkl * n_g )
-                    end if
+                    ! if (n_g - floor(n_g) < 0.5) then
+                    !     hkl_bright = floor( hkl * n_g )
+                    ! else
+                    !     hkl_bright = ceiling( hkl * n_g )
+                    ! end if
+                    hkl_bright = nint( n_g ) * hkl
                     call perfectLatticeIntensity(imb,hkl_bright,maxIntensity,I_g)
                     write(*,fmt=form) " tiltFoil info - perfect lattice intensity at ",hkl_bright," after user specified tilt ",I_g
                 end if
@@ -713,7 +714,7 @@
                             write(*,fmt=form) " selecting bright reflection g,n_g = ",hkl,",",n_g
                             print *,""
                         end if
-                        hkl_bright = nint( hkl * n_g )
+                        hkl_bright = nint( n_g ) * hkl
                         call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt )
                     else
                         if (rank==0) then
@@ -721,17 +722,18 @@
                             write(*,fmt=form) " selecting bright reflections for g,n_g = ",hkl,",",n_g
                             print *,""
                         end if
-                        hkl_bright = floor( hkl * n_g )
+                        hkl_bright = floor( n_g ) * hkl
                         call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt )
-                        hkl_bright = ceiling( hkl * n_g )
+                        hkl_bright = ceiling( n_g ) * hkl
                         call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt2 )
                         foil_tilt = quaternionToRotMat( slerp( Quaternion_ctor(foil_tilt),Quaternion_ctor(foil_tilt2), ceiling(n_g) - n_g ) )       !   ceiling(x)-x = 1 for x = 3.00 and = 0 for 3.99
 
-                        if (n_g - floor(n_g) < 0.5) then
-                            hkl_bright = floor( hkl * n_g )
-                        else
-                            hkl_bright = ceiling( hkl * n_g )
-                        end if
+                        ! if (n_g - floor(n_g) < 0.5) then
+                        !     hkl_bright = floor( n_g ) * hkl
+                        ! else
+                        !     hkl_bright = ceiling( n_g ) * hkl
+                        ! end if
+                        hkl_bright = nint( n_g ) * hkl
 
                     end if            
                     if (rank==0) then
