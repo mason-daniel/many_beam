@@ -427,7 +427,7 @@
 
         
         if ((rank==0) .and. isState(OPDIFF)) then
-            call outputDiffractionPattern( imb,trim(outfile)//"_before",1024,maxIntensity = .false. )
+            call outputDiffractionPattern( imb,trim(outfile)//"_before",1024,maxIntensity = .false.,yflip=yflip )
         end if
 
     !---    tilt the foil to "good" diffraction conditions
@@ -446,8 +446,8 @@
         call pause(tt(T_OUTPUT))
         if ((rank==0) .and. isState(OPDIFF)) then
             call start(tt(T_OUTPUT))
-            call outputDiffractionPattern( imb,trim(outfile)//"_ready",1024,maxIntensity = .false. )
-            call outputDiffractionPattern( imb,trim(outfile)//"_max",1024,maxIntensity = .true. )
+            call outputDiffractionPattern( imb,trim(outfile)//"_ready",1024,maxIntensity = .false.,yflip=yflip )
+            call outputDiffractionPattern( imb,trim(outfile)//"_max",1024,maxIntensity = .true.,yflip=yflip )
             call pause(tt(T_OUTPUT))
         end if
         
@@ -511,7 +511,7 @@
         
         if (isState(OPDIFF)) then
             call start(tt(T_OUTPUT))
-            call outputDiffractionPattern( imb,trim(outfile)//"_after",1024,maxIntensity=.false. )
+            call outputDiffractionPattern( imb,trim(outfile)//"_after",1024,maxIntensity=.false.,yflip=yflip )
             call pause(tt(T_OUTPUT))
         end if
 
@@ -865,13 +865,14 @@
             return
         end subroutine selectImportantBeams
 
-        subroutine outputDiffractionPattern( imb,prefix,Nx,maxIntensity )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine outputDiffractionPattern( imb,prefix,Nx,maxIntensity,yflip )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      output the diffraction pattern as a .png
             type(IntegrateManyBeams),intent(inout)              ::      imb
             character(len=*),intent(in)                         ::      prefix
             integer,intent(in)                                  ::      Nx
             logical,intent(in)                                  ::      maxIntensity        !   if true, then show where the energy is, if false, show diff pat at foil exir
+            logical,intent(in)                                  ::      yflip               !   should we flip the diffraction pattern to match the flip in the TEM image?
             real(kind=real64),dimension(:,:),allocatable        ::      img
             type(Gvectors)                  ::      gv
             integer                         ::      ix,iy,ii
@@ -944,6 +945,15 @@
             if (rank==0) then
                 print *,"run_SimulatedTEM::outputDiffractionPattern info - drawing ",(nG+1)," spots to """//trim(prefix)//".diff.png"//""""
                 print *,"run_SimulatedTEM::outputDiffractionPattern info - minmax img ",minval(img),maxval(img)
+                if (yflip) then         !   flip the orientation of the diffraction pattern
+                    do iy = 0,(Nx/2)-1
+                        do ix = 0,Nx-1
+                            ss = img(ix,iy)
+                            img(ix,iy) = img(ix,Nx-1-iy)
+                            img(ix,Nx-1-iy) = ss
+                        end  do
+                    end do
+                end if
                 call writePng( trim(prefix)//".diff.png",img )
             end if
 
