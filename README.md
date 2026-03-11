@@ -1,0 +1,105 @@
+
+compilation for CSD3
+
+cmake ../. -DCMAKE_Fortran_COMPILER=mpiifort -DCMAKE_C_COMPILER=mpiicc -DCMAKE_BUILD_TYPE= -DCMAKE_SERIAL=False
+
+## Specifying the lattice
+
+The lattice parameter and lattice type will be set automatically by atom type. These defaults can be overridden using
+```
+    -a0  a
+    -a0  a,b,c
+    -lattice [bcc/fcc/hcp]
+```
+The orientation of the atoms is an expensive calculation. If the atoms are not in the orientation such that the input file "x" direction is [100], and y = [010], z = [001], then this needs to be input.
+Use 
+```
+    U = uxx,uyx,uzx,uxy,uyy,uzy,uxz,uyz,uzz
+```
+To define the crystal lattice vector [uvw] to point in the space direction [xyz].
+```
+    ( x )   ( uxx uxy uxz )( a1 b1 c1 )( u )
+    ( y ) = ( uyx uyy uyz )( a2 b2 c2 )( v )
+    ( z )   ( uzx uzy uzz )( a3 b3 c3 )( w )
+```
+where [a1,a2,a3] is the lattice vector direction in the unrotated frame. 
+For cubic crystals 
+```
+    ( a1 b1 c1 )      ( 1 0 0 )    
+    ( a2 b2 c2 ) = a0 ( 0 1 0 )  
+    ( a3 b3 c3 )      ( 0 0 1 )
+```
+For hcp  
+```
+    ( a1 b1 c1 )      ( 1/2         1/2     0       )
+    ( a2 b2 c2 ) = a0 ( √(3/4)   -√(3/4)    0       )
+    ( a3 b3 c3 )      (  0          0       √(8/3)  )
+```
+
+## Diffraction patterns
+
+Generate intensities at the diffracted beams using -opDP. 
+Note that this is not a true diffraction pattern- as the intensity is only calculated at a set of predetermined g-vector points and not everywhere.
+The intensity and size of spots are indicative only, these patterns can be used to check if we are in sensible diffraction conditions, rather than being intended for analytic work.
+
+Four files are produced:
+
+_before.diff.png        is the intensity at the g-vector positions at an idealised (defect free) foil back surface before rotating the foil.
+_max.diff.png           is the maximum intensity anywhere in an idealised (defect free) . It is used in many beam mode to check where the energy is.
+_ready.diff.png         is the intensity at the g-vector positions at an idealised (defect free) foil back surface after rotating the foil.
+_after.diff.png         is the intensity at the g-vector positions actually used in the full calculation, using the atom positions used in the full calculation.
+
+
+##  Setting a diffraction condition
+
+The diffraction condition can be set in a number of ways. 
+
+It is required to set a g-vector to focus on, with
+```
+    -g h,k,l
+    -g h,j,k,l
+```
+where [hkl] is the Miller index ( or [hjkl] Miller-Bravais index for hcp ).
+
+Then we can set which diffraction spot is selected to be brightest ( two beam conditions ), using 
+``` 
+    -ng 4
+``` 
+Default -ng 1. The foil is tilted until spot ng*[hkl] is brightest. 
+If the diffraction pattern does not show this spot clearly bright, try changing the tilt search range to maximum tilt stage angle theta (degrees) and with ntilt samples.
+```
+    -ntilt int
+    -theta float
+```
+
+Then we decide which beam is used to make the image.
+In -dark mode, the image is taken at [hkl].
+In -bright mode, the image is taken at [000].
+
+### Advanced options
+
+#### Tilt foil by hand
+Tilt the foil by hand using -R, example set no tilt with
+```
+    -R 1,0,0,0,1,0,0,0,1
+```
+This can also be used to tilt in the direction of the g-vector, which will force a value for s_g.
+
+#### All beams "cheap STEM"
+Use all beams (except [000]) to construct the image, instead of just one with -all.
+Note this will remove the tilt ( equivalent to -R 1,0,0,0,1,0,0,0,1 ). This option is intended to be a quick-and-dirty approximation to STEM... but be warned that 'all beams' in this code only means the selected points in the diffraction pattern and not truly 'all'.
+Note that selecting -all -bright gives the nega
+
+#### Precession 
+Remove the exaggerated effect of small changes in s_g by precessing the beam with a small additional tilt angle.
+```
+    -nPrecAngle int 
+    -precAngle float
+```
+A good selection is -nPrecAngle 10 -precAngle 0.03
+
+
+
+
+
+

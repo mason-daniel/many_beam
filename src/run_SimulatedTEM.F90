@@ -72,7 +72,8 @@
         logical                             ::      pngBlur = .true.        !   blurring radius sigma/a
         logical                             ::      pngNorm = .true.        !   normalise output intensity
         real(kind=real64)                   ::      n_g = 1                 !   which reflection to make bright
-        logical                             ::      df = .true. , bf = .false.            !   find dark field        
+        logical                             ::      df = .true. , bf = .false.            !   find dark field  
+        logical                             ::      all_beams = .false.     !   construct image from all beams      
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
         real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
@@ -194,9 +195,12 @@
         call get( cla,"precAngle",precAngle ,LIB_CLA_OPTIONAL,"  precession angle (rad)",CLA_DIFF )             
         df = (n_g /= 1.0d0)
         call get( cla,"dark",df ,LIB_CLA_OPTIONAL,"       output dark field image",CLA_DIFF )                 
-        call get( cla,"bright",bf ,LIB_CLA_OPTIONAL,"       output bright field image (set -bf or -df not both!)",CLA_DIFF )                 
-        if (hasArgument(cla,"bright")) df = .not. bf
+        call get( cla,"bright",bf ,LIB_CLA_OPTIONAL,"     output bright field image (set -bf or -df not both!)",CLA_DIFF )                 
+        if (hasArgument(cla,"bright")) df = .not. bf        
+        call get( cla,"all",all_beams ,LIB_CLA_OPTIONAL,"        output image using all beams except [000] ( requires many beam )",CLA_DIFF )      
         
+
+
     !---    set major runtime attributes        
         attset = isState(COLUMNAR)
         call get( cla,"col",attset ,LIB_CLA_OPTIONAL,"        use columnar approximation",CLA_CALC )                 
@@ -209,6 +213,11 @@
         attset = isState(TWOBEAM)
         call get( cla,"2",attset ,LIB_CLA_OPTIONAL,"          compute in two beam approximation",CLA_CALC )                 
         if (hasArgument(cla,"2")) call setState(TWOBEAM,attset)
+ 
+                      
+
+
+
 
 
         call get( cla,"imin",imin,LIB_CLA_OPTIONAL,"       intensity threshold for beam selection",CLA_CALC )         
@@ -265,28 +274,44 @@
             if (.not. isState(LOSSY)) outfile = trim(outfile)//".e"
             if (isState(TWOBEAM))  outfile = trim(outfile)//".2"
             if (nPrec>1)  outfile = trim(outfile)//".p"
-            write(aa,fmt='(i2)') hkl(1)
-            outfile = trim(outfile)//".g"//trim(adjustl(aa))
-            write(aa,fmt='(i2)') hkl(2)
-            outfile = trim(outfile)//trim(adjustl(aa))
-            write(aa,fmt='(i2)') hkl(3)
-            outfile = trim(outfile)//trim(adjustl(aa))
-            if (size(hkl)==4) then
-                write(aa,fmt='(i2)') hkl(4)
+
+            if (.not. all_beams) then
+                write(aa,fmt='(i2)') hkl(1)
+                outfile = trim(outfile)//".g"//trim(adjustl(aa))
+                write(aa,fmt='(i2)') hkl(2)
                 outfile = trim(outfile)//trim(adjustl(aa))
+                write(aa,fmt='(i2)') hkl(3)
+                outfile = trim(outfile)//trim(adjustl(aa))
+                if (size(hkl)==4) then
+                    write(aa,fmt='(i2)') hkl(4)
+                    outfile = trim(outfile)//trim(adjustl(aa))
+                end if
+                write(aa,fmt='(f4.2)') n_g
+                outfile = trim(outfile)//".ng"//trim(adjustl(aa))
             end if
-            write(aa,fmt='(f4.2)') n_g
-            outfile = trim(outfile)//".ng"//trim(adjustl(aa))
+            
         end if
 
         zlayers = max(2,zlayers)
         if (mod(zlayers,2) == 1) zlayers = zlayers+1
 
-        specifiedRmat = hasArgument(cla,"R")
+
+
+        if (all_beams .and.  isState(TWOBEAM)) then
+            if (rank==0) print *,"run_SimulatedTEM warning - asked for 'all' beams in two beam mode. Ignoring '-all'"
+            all_beams = .false.
+        end if
+
+        if (.not. all_beams) then
+            specifiedRmat = hasArgument(cla,"R")
+        else if (.not. specifiedRmat) then
+            Rmat = (/1,0,0,0,1,0,0,0,1/)
+            specifiedRmat = .true.
+            if (rank==0) print *,"run_SimulatedTEM info - asked for 'all' beams, specifying tilt -R 1,0,0,0,1,0,0,0,1 "
+        end if
+
 
         specifiedUmat = hasArgument(cla,"U")
-
-
 
 
 
@@ -375,6 +400,7 @@
             print *,"   ^^^^^^^^^^^^^^^"
             if (isState(OPPNG)) &
             print *,"       output .png  blur       ",pngBlur," normalised? ",pngNorm
+            print *,"       yflip .png              ",yflip
             print *,"       debug mode              ",dbg
             print *,""  
 
@@ -526,12 +552,16 @@
                 print *,"output .png"
                 print *,"^^^^^^^^^^^"
             end if
-            
+                        
             if (df) then
-                call getIntensity( imb,hkl,img )      !   gathers result on rank 0
+                if (all_beams) then
+                    call getIntensity( imb,img )            !   gathers result on rank 0
+                else
+                    call getIntensity( imb,hkl,img )        !   gathers result on rank 0
+                end if
             else
                 hkl = 0
-                call getIntensity( imb,hkl,img )      !   gathers result on rank 0
+                call getIntensity( imb,hkl,img )            !   gathers result on rank 0
             end if
 
             if (rank==0) then
@@ -707,7 +737,7 @@
 
             else
         
-                if (.not. ( (n_g==1.0).and.df) ) then
+            !    if (.not. ( (n_g==1.0).and.df) ) then
                     if (abs(n_g - nint(n_g)) < 1.0d-6) then
                         if (rank==0) then
                             print *,""
@@ -746,7 +776,7 @@
                         call perfectLatticeIntensity(imb,hkl_bright,maxIntensity,I_g)
                         write(*,fmt=form) " tiltFoil info - perfect lattice intensity at ",hkl_bright," after tilt ",I_g
                     end if
-                end if
+            !    end if
                 
                 ! if (dark) then
                 ! !   add an additional tweak to make hkl extra dark

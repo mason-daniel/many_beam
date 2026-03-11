@@ -17,12 +17,13 @@
 
         
     !---    define the elements recognised        
-        integer,private,parameter                               ::          NELNAMES = 50
+        integer,private,parameter                               ::          NELNAMES = 54
         integer,public,parameter                                ::          ELNAME_LEN = 2
         integer,public,parameter                                ::          LATTNAME_LEN = 3
         integer,public,parameter                                ::          DT_COEFFS = 5
 
         character(len=ELNAME_LEN),dimension(NELNAMES),parameter  ::         ELNAMES = (/   &
+                        'H ','D ','T ','He',     &
                         'Li','Be','C ','O ','Na','Mg','Al','Si','K '                    &
                        ,'Ca','Ti','V ','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge'     &
                        ,'As','Rb','Sr','Y ','Zr','Nb','Mo','Ru','Rh','Pd','Ag','Cd'     &
@@ -31,6 +32,7 @@
 
         character(len=LATTNAME_LEN),public,parameter               ::       UNKNOWN_LATTICE = "unk"
         character(len=LATTNAME_LEN),dimension(NELNAMES),parameter  ::       ELLATTICE = (/           &
+                        'hcp','hcp','hcp','unk',    &
                         'bcc','hcp','dia','unk','bcc','hcp','fcc','dia','bcc'                       &
                        ,'fcc','hcp','bcc','bcc','bcc','bcc','hcp','fcc','fcc','fcc','ort','dia'     &
                        ,'rho','bcc','fcc','hcp','hcp','bcc','bcc','hcp','fcc','fcc','fcc','hcp'     &
@@ -42,6 +44,7 @@
 
     !   https://pubchem.ncbi.nlm.nih.gov/ptable/atomic-mass/                       
         real(kind=real64),dimension(NELNAMES),parameter             ::      ELMASS = (/                                                         &
+                        1.0d0,2.0d0,3.0d0,4.0d0,   &
                         7.0d0,9.012183d0,12.011d0,15.999d0,22.9897693d0,24.305d0,26.981538d0,28.085d0,39.0983d0                                 &
                        ,40.08d0,47.867d0,50.9415d0,51.996d0,54.93804d0,55.84d0,58.93319d0,58.693d0,63.55d0,65.4d0,69.723d0,72.63d0              &
                        ,74.92159d0,85.468d0,87.62d0,88.90584d0,91.22d0,92.90637d0,95.95d0,101.1d0,102.9055d0,106.42d0,107.868d0,112.41d0        &
@@ -52,6 +55,7 @@
     !   https://www.knowledgedoor.com/2/elements_handbook/debye_temperature.html room temperature limits                   
     !   except Oxygen DOI:  10.1007/BF00628329 Fagerstroem & Holis Hallet J Low Temp Phys 1:3 (1969)
         real(kind=real64),dimension(NELNAMES),parameter             ::      DEBYETEMP = (/              &
+                                    0,0,0,0,   &
                                     448,1031,1550,104,155,330,390,692,100                               &
                                    ,230,380,390,424,363,373,386,345,310,237,240,403                     &
                                    ,275, 59,148,214,250,260,377,415,350,275,221,221                     &
@@ -62,6 +66,7 @@
     !---    lattice parameter (pm)       
     !   https://periodictable.com/Properties/A/LatticeConstants.html                                   
         real(kind=real64),dimension(NELNAMES),parameter             ::      ELA0 = (/                                                           &
+                                    0.0d0,0.0d0,0.0d0,0.0d0,   &
                         351.00d0,228.58d0,246.40d0,540.30d0,429.06d0,320.94d0,404.95d0,543.09d0,532.80d0                                        &
                        ,558.84d0,295.08d0,303.00d0,291.00d0,891.25d0,286.65d0,250.71d0,352.40d0,361.49d0,266.49d0,451.97d0,565.75d0             &
                        ,375.98d0,558.50d0,608.49d0,364.74d0,323.20d0,330.04d0,314.70d0,270.59d0,380.34d0,389.07d0,408.53d0,297.94d0             &
@@ -69,6 +74,7 @@
                        ,392.42d0,407.82d0,345.66d0,495.08d0,508.42d0                  /)
 
         real(kind=real64),dimension(NELNAMES),parameter             ::      ELB0 = (/                                                           &
+                                    0.0d0,0.0d0,0.0d0,0.0d0,   &
                         351.00d0,228.58d0,246.40d0,342.90d0,429.06d0,320.94d0,404.95d0,543.09d0,532.80d0                                        &
                        ,558.84d0,295.08d0,303.00d0,291.00d0,891.25d0,286.65d0,250.71d0,352.40d0,361.49d0,266.49d0,766.33d0,565.75d0             &
                        ,375.98d0,558.50d0,608.49d0,364.74d0,323.20d0,330.04d0,314.70d0,270.59d0,380.34d0,389.07d0,408.53d0,297.94d0             &
@@ -76,6 +82,7 @@
                        ,392.42d0,407.82d0,345.66d0,495.08d0,508.42d0                  /)
 
         real(kind=real64),dimension(NELNAMES),parameter             ::      ELC0 = (/                                                           &
+                                    0.0d0,0.0d0,0.0d0,0.0d0,   &
                         351.00d0,358.43d0,671.10d0,508.60d0,429.06d0,521.08d0,404.95d0,543.09d0,532.80d0                                        &
                        ,558.84d0,468.55d0,303.00d0,291.00d0,891.25d0,286.65d0,406.95d0,352.40d0,361.49d0,494.68d0,452.60d0,565.75d0             &
                       ,1054.75d0,558.50d0,608.49d0,573.06d0,514.70d0,330.04d0,314.70d0,428.15d0,380.34d0,389.07d0,408.53d0,561.86d0             &

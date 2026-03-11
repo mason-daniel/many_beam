@@ -152,6 +152,7 @@
 
         interface       getIntensity
             module procedure            getIntensity0
+            module procedure            getIntensity0a
             module procedure            getIntensity1
         end interface
 
@@ -706,6 +707,82 @@
            
             return
         end subroutine getIntensity0
+
+
+        subroutine getIntensity0a(this,img)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      get the result combining all g-vectors except [000].
+    !*      gather on rank 0
+            type(IntegrateManyBeams),intent(in)     ::      this
+            real(kind=real64),dimension(:,:),allocatable    ::      img
+
+            integer                     ::      ii
+            integer                     ::      ix,iy,nx,ny
+            integer                     ::      jx,jy,mx,my
+            integer                     ::      pp,lbx,ubx,lby,uby
+            
+            integer                     ::      mm
+            real(kind=real64)           ::      Ig
+            complex(kind=real64)        ::      phig
+
+#ifdef MPI
+            real(kind=real64),dimension(:,:),allocatable    ::      I_tmp
+            integer                     ::      ierror
+#endif
+ 
+
+        !---    allocate space for output image
+            nx = getNx(this%is)
+            ny = getNy(this%is)
+            allocate(img(0:nx-1,0:ny-1))
+            img = 0
+            
+            
+        
+            mx = getMx(this%is)
+            my = getMy(this%is)
+            !print *,"Lib_IntegrateManyBeams::getIntensity0a info - rank ",rank," nx,ny,mx,my,nPrec ",nx,ny,mx,my,this%nPrec
+            do jy = 0,my-1
+                do jx = 0,mx-1
+
+                !---    find who has the blocks of this image
+                    pp = whoseBlock( this%is,jx,jy )
+                    call blockExtent( this%is,pp,lbx,ubx,lby,uby )
+
+                   ! print *,"Lib_IntegrateManyBeams::getIntensity0a info - rank ",pp," computing ",lbx,":",ubx,",",lby,":",uby
+                    if (pp == rank) then
+                !---    compute intensity in block
+                        !print *,"Lib_IntegrateManyBeams::getIntensity0a info - rank ",pp," computing ",lbx,":",ubx,",",lby,":",uby
+                        do iy = lby,uby
+                            do ix = lbx,ubx
+                                Ig = 0.0d0
+                                do mm = 1,this%nPrec
+                                    do ii = 1,getn(this%gv)
+                                        phig = this%slice(mm)%phi( ii,ix,iy )
+                                        Ig = Ig + real(phig)*real(phig) + aimag(phig)*aimag(phig)
+                                    end do
+                                end do
+                                img(ix,iy) = Ig
+                            end do
+                        end do
+                        
+                    end if
+ 
+                end do
+            end do
+
+#ifdef MPI
+            if (nprocs>1) then
+                allocate(I_tmp(0:nx-1,0:ny-1))
+                I_tmp = img
+                call MPI_REDUCE( I_tmp,img,nx*ny,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,ierror )
+            end if
+#endif        
+
+            img = img / this%nPrec
+           
+            return
+        end subroutine getIntensity0a
 
         subroutine getIntensity1(this,I_g,maxIntensity)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
