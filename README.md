@@ -1,7 +1,23 @@
+# Quick start
 
-compilation for CSD3
+## compilation for mpi executable CSD3
+
+mkdir build ; cd build
 
 cmake ../. -DCMAKE_Fortran_COMPILER=mpiifort -DCMAKE_C_COMPILER=mpiicc -DCMAKE_BUILD_TYPE= -DCMAKE_SERIAL=False
+
+## first run
+
+./bin/run_SimulatedTEM
+
+should give a list of runtime options.
+
+## typical run
+
+./bin/run_SimulatedTEM -f inputFe.xyz -g 2,0,0 -a0 2.8665 
+
+where inputFe.xyz is an extended xyz format file containing Fe atoms, with an [001] axis in the z-direction, and lattice parameter 2.8665A.
+
 
 ## Specifying the lattice
 
