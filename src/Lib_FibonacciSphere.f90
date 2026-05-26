@@ -52,7 +52,7 @@
 
 
         subroutine fibonacci_cap(x,psi)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      place points on the unit sphere with z > cos(psi) 
             real(kind=real64),dimension(:,:),intent(out)        ::      x           !   (3,n)
             real(kind=real64),intent(in)                        ::      psi         !   0:Pi
@@ -78,9 +78,8 @@
                 yy = rho*sin(theta)
 
                 x(:,ii) = (/ xx,yy,zz /)
+                
             end do
-            
-
 
             return
         end subroutine fibonacci_cap

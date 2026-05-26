@@ -24,7 +24,8 @@
         latt = Lattice_ctor("bcc")
         call report(latt)
         a_conventional_cell = getConventionalCell(latt)
-        call permittedReflections( latt,n,hkl,rho_in=2.0d0 )
+        call permittedReflections( latt,hkl,rho_in=2.0d0 )
+        n = ubound(hkl,dim=2)
         print *,""
 
     !---    construct a g-vector object
@@ -41,12 +42,13 @@
         latt = Lattice_ctor("hcp")
         call report(latt)
         a_conventional_cell = getConventionalCell(latt)
-        call permittedReflections( latt,n,hkl,rho_in=1.5d0 )
+        call permittedReflections( latt,hkl,rho_in=1.5d0 )
+        n = ubound(hkl,dim=2)
         print *,""
 
     !---    construct a g-vector object
         allocate(hjkl(4,n))
-        do ii = 1,n
+        do ii = 0,n
             hjkl(:,ii) = nint( MillerToMillerBravais_plane(real(hkl(:,ii),kind=real64)) )
         end do
 

@@ -11,7 +11,8 @@
 !*          v.0.0.1         Oct 24      First working version
 !*          v.0.0.2         Feb 26      bright field vs dark field imaging permitted. 
 !*          v.0.0.3         Feb 26      Fix to selection rules - thanks to Thomas Jourdan (CEA) for spotting mod vs modulo bug
-
+!*          v.0.0.4         Mar 26      Option to output image from all diffracted beams
+!*          v.0.0.5         Apr 26      Option to find centre-of-mass in diffraction pattern
 
 !*      good break points to set (GDB)
 !*      b run_SimulatedTEM.f90:287           !   after command line params
@@ -42,7 +43,7 @@
         implicit none
 
 
-        character(len=8),parameter          ::      VERSION = "0.0.1"
+        character(len=8),parameter          ::      VERSION = "0.0.4"
 
 
         real(kind=real64),parameter         ::      PI = 3.14159265390d0
@@ -72,8 +73,9 @@
         logical                             ::      pngBlur = .true.        !   blurring radius sigma/a
         logical                             ::      pngNorm = .true.        !   normalise output intensity
         real(kind=real64)                   ::      n_g = 1                 !   which reflection to make bright
-        logical                             ::      df = .true. , bf = .false.            !   find dark field  
-        logical                             ::      all_beams = .false.     !   construct image from all beams      
+        logical                             ::      df = .true. , bf =.false.       !   find dark field - note bf not used except in command line interface -bright
+        logical                             ::      all_beams = .false.     !   construct image from all beams 
+        logical                             ::      com_beams = .false.     !   construct image from centre of mass of beams
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
         real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
@@ -88,7 +90,8 @@
     !---    physical variables
         type(IntegrateManyBeams)            ::      imb
         integer                             ::      Nx,Ny           !   image size
-        real(kind=real64),dimension(:,:),allocatable        ::      img
+        real(kind=real64),dimension(:,:),allocatable        ::      img         !   greyscale image of intensities
+        real(kind=real64),dimension(:,:,:),allocatable      ::      com_img     !   coloured image of centre of mass
         integer,dimension(4)                ::      dat
         character(len=256)                  ::      dummy
         integer,dimension(:,:),allocatable  ::      hkl_important
@@ -98,6 +101,7 @@
         integer             ::      ii,ix,iy,iyp
         real(kind=real64)   ::      dd
         character(len=5)    ::      aa
+        logical             ::      ok
 
     !---    timing
         integer,parameter               ::      TIMER = kind(1_int32)
@@ -190,14 +194,18 @@
             allocate(hkl(ii))
             hkl(1:ii) = dat(1:ii)       
         end if
-        call get( cla,"ng",n_g ,LIB_CLA_OPTIONAL,"         tilt foil until this reflection bright",CLA_DIFF )                 
+        call get( cla,"ng",n_g ,LIB_CLA_OPTIONAL,"         tilt foil until this reflection bright",CLA_DIFF )            
+        ok = isState(FIBONACCI_PREC)
+        call get( cla,"Fibonacci",ok ,LIB_CLA_OPTIONAL,"  use Fibonacci spiral to generate precession angles",CLA_DIFF )                                                        
+        if (hasArgument(cla,"Fibonacci")) call setState(FIBONACCI_PREC,ok) 
         call get( cla,"nPrecAngle",nPrec ,LIB_CLA_OPTIONAL," number of precession images to take",CLA_DIFF )                                                        
         call get( cla,"precAngle",precAngle ,LIB_CLA_OPTIONAL,"  precession angle (rad)",CLA_DIFF )             
-        df = (n_g /= 1.0d0)
+        !df = (n_g /= 1.0d0)
         call get( cla,"dark",df ,LIB_CLA_OPTIONAL,"       output dark field image",CLA_DIFF )                 
         call get( cla,"bright",bf ,LIB_CLA_OPTIONAL,"     output bright field image (set -bf or -df not both!)",CLA_DIFF )                 
         if (hasArgument(cla,"bright")) df = .not. bf        
         call get( cla,"all",all_beams ,LIB_CLA_OPTIONAL,"        output image using all beams except [000] ( requires many beam )",CLA_DIFF )      
+        call get( cla,"com",com_beams ,LIB_CLA_OPTIONAL,"        output image using com of all beams except [000] ( requires many beam )",CLA_DIFF )      
         
 
 
@@ -269,13 +277,53 @@
         end if
 
 
+
+        zlayers = max(2,zlayers)
+        if (mod(zlayers,2) == 1) zlayers = zlayers+1
+
+
+
+        if (all_beams .and.  isState(TWOBEAM)) then
+            if (rank==0) print *,"run_SimulatedTEM warning - asked for 'all' beams in two beam mode. Ignoring '-all'"
+            all_beams = .false.
+        end if
+
+        
+        if (com_beams .and.  isState(TWOBEAM)) then
+            if (rank==0) print *,"run_SimulatedTEM warning - asked for 'com' image in two beam mode. Ignoring '-all'"
+            com_beams = .false.
+        end if
+
+        if (.not. (com_beams.or.all_beams) ) then
+            specifiedRmat = hasArgument(cla,"R")
+        else if (.not. specifiedRmat) then
+            Rmat = (/1,0,0,0,1,0,0,0,1/)
+            specifiedRmat = .true.
+            if (rank==0) print *,"run_SimulatedTEM info - asked for 'all beams' or 'com image', specifying tilt -R 1,0,0,0,1,0,0,0,1 "
+        end if
+
         if (.not. hasArgument(cla,"o")) then
+
             if (isState(COLUMNAR)) outfile = trim(outfile)//".c"
             if (.not. isState(LOSSY)) outfile = trim(outfile)//".e"
             if (isState(TWOBEAM))  outfile = trim(outfile)//".2"
-            if (nPrec>1)  outfile = trim(outfile)//".p"
+            if (nPrec>1) then
+                if (isState(FIBONACCI_PREC)) then
+                    outfile = trim(outfile)//".f"
+                else
+                    outfile = trim(outfile)//".p"
+                end if
+            end if
+            if (com_beams) outfile = trim(outfile)//".com"
+            if (all_beams) outfile = trim(outfile)//".all"
+            if (.not. df) outfile = trim(outfile)//".bf"
+            if (specifiedRmat) then
+                outfile = trim(outfile)//".fixR"
+            else
+                outfile = trim(outfile)//".autoR"
+            end if
 
-            if (.not. all_beams) then
+            if (.not. (com_beams.or.all_beams)) then
                 write(aa,fmt='(i2)') hkl(1)
                 outfile = trim(outfile)//".g"//trim(adjustl(aa))
                 write(aa,fmt='(i2)') hkl(2)
@@ -291,25 +339,6 @@
             end if
             
         end if
-
-        zlayers = max(2,zlayers)
-        if (mod(zlayers,2) == 1) zlayers = zlayers+1
-
-
-
-        if (all_beams .and.  isState(TWOBEAM)) then
-            if (rank==0) print *,"run_SimulatedTEM warning - asked for 'all' beams in two beam mode. Ignoring '-all'"
-            all_beams = .false.
-        end if
-
-        if (.not. all_beams) then
-            specifiedRmat = hasArgument(cla,"R")
-        else if (.not. specifiedRmat) then
-            Rmat = (/1,0,0,0,1,0,0,0,1/)
-            specifiedRmat = .true.
-            if (rank==0) print *,"run_SimulatedTEM info - asked for 'all' beams, specifying tilt -R 1,0,0,0,1,0,0,0,1 "
-        end if
-
 
         specifiedUmat = hasArgument(cla,"U")
 
@@ -553,43 +582,86 @@
                 print *,"^^^^^^^^^^^"
             end if
                         
-            if (df) then
+            if (com_beams) then
+                if (rank==0) print *,"run_SimulatedTEM info - generating centre-of-mass diffraction pattern image"
+                call getCentreOfMassImage( imb,com_img,df )    !   gathers result on rank 0
+            else if (df) then
                 if (all_beams) then
+                    if (rank==0) print *,"run_SimulatedTEM info - generating image using all beams"
                     call getIntensity( imb,img )            !   gathers result on rank 0
                 else
+                    if (rank==0) print *,"run_SimulatedTEM info - generating image using selected beam"
                     call getIntensity( imb,hkl,img )        !   gathers result on rank 0
                 end if
             else
                 hkl = 0
+                if (rank==0) print *,"run_SimulatedTEM info - generating image using hkl=[000]"
                 call getIntensity( imb,hkl,img )            !   gathers result on rank 0
             end if
 
             if (rank==0) then
-                Nx = size(img,dim=1)
-                Ny = size(img,dim=2)
-                print *,"run_SimulatedTEM info - image size ",Nx,"x",Ny 
-                write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - minmaxavg img ",minval(img),maxval(img),sum(img)/(Nx*Ny)
 
+                if (com_beams) then
 
-                if (pngBlur) then
-                    dd = getSigma( imb )/getA( imb )
-                    call blurImg( img, dd ) 
-                end if
+                    Nx = size(com_img,dim=2)
+                    Ny = size(com_img,dim=3)
+                    print *,"run_SimulatedTEM info - image size ",Nx,"x",Ny 
+                    write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - writing to """//trim(outfile)//".png"""
 
-                if (yflip) then
-                    !   flip image in y-axis
-                    do iy = 0,int( (Ny-1)/2 )      !   round down
-                        iyp = Ny-1-iy
-                        do ix = 0,Nx-1
-                            dd = img(ix,iy)
-                            img(ix,iy) = img(ix,iyp)
-                            img(ix,iyp) = dd
+                    if (pngBlur) then
+                        dd = getSigma( imb )/getA( imb )
+                        do ii = 1,3
+                            call blurImg( com_img(ii,:,:), dd ) 
                         end do
-                    end do
+                    end if
+
+                    if (yflip) then
+                        !   flip image in y-axis
+                        do iy = 0,int( (Ny-1)/2 )      !   round down
+                            iyp = Ny-1-iy
+                            do ix = 0,Nx-1
+                                do ii = 1,3
+                                    dd = com_img(ii,ix,iy)
+                                    com_img(ii,ix,iy) = com_img(ii,ix,iyp)
+                                    com_img(ii,ix,iyp) = dd
+                                end do
+                            end do
+                        end do
+                    end if
+
+                    ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
+                    call write_rgb_png( trim(outfile)//".png",com_img(:,ix:Nx-1-ix,ix:Ny-1-ix) )
+
+                else
+
+                    Nx = size(img,dim=1)
+                    Ny = size(img,dim=2)
+                    print *,"run_SimulatedTEM info - image size ",Nx,"x",Ny 
+                    write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - minmaxavg img ",minval(img),maxval(img),sum(img)/(Nx*Ny)
+                    write(*,fmt='(a,3f10.6)') " run_SimulatedTEM info - writing to """//trim(outfile)//".png"""
+
+                    if (pngBlur) then
+                        dd = getSigma( imb )/getA( imb )
+                        call blurImg( img, dd ) 
+                    end if
+
+                    if (yflip) then
+                        !   flip image in y-axis
+                        do iy = 0,int( (Ny-1)/2 )      !   round down
+                            iyp = Ny-1-iy
+                            do ix = 0,Nx-1
+                                dd = img(ix,iy)
+                                img(ix,iy) = img(ix,iyp)
+                                img(ix,iyp) = dd
+                            end do
+                        end do
+                    end if
+
+                    ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
+                    call writePng( trim(outfile)//".png",img(ix:Nx-1-ix,ix:Ny-1-ix),normalise=pngNorm )
+
                 end if
 
-                ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
-                call writePng( trim(outfile)//".png",img(ix:Nx-1-ix,ix:Ny-1-ix),normalise=pngNorm )
 
             end if
             call pause(tt(T_OUTPUT))
@@ -682,7 +754,7 @@
             return
         end subroutine blurImg
 
-        subroutine tiltFoil(imb,tilt_max,hkl,n_g,dark)      ! 
+        subroutine tiltFoil(imb,tilt_max,hkl,n_g,dark)        
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^     
     !*      find a good tilt angle 0:tilt_max (radians) so that the reflection
     !*      ng [hkl] is bright. Optionally then tweak until the reflection [hkl] is dark
@@ -839,6 +911,12 @@
             nG = getn(gv)
             MillerBravais = isMillerBravais(gv)
 
+            if (rank==0) then
+                print *,"select important beams"
+                call report(gv)
+            end if
+
+
         !---    find max intensity of beam inside the (assumed perfect) foil            
             allocate(I_g(0:nG))
             call getIntensity(imb,I_g,maxIntensity = .true.)
@@ -867,9 +945,9 @@
 
         !---    allocate memory for important reflections            
             if (MillerBravais) then
-                allocate(hkl(4,nn))
+                allocate(hkl(4,0:nn-1))
             else
-                allocate(hkl(3,nn))
+                allocate(hkl(3,0:nn-1))
             end if
             hkl = 0
 
@@ -877,7 +955,7 @@
             form = "(a,i4,a,3i4,a,f16.8)"
             if (MillerBravais) form = "(a,i4,a,4i4,a,f10.6)"
 
-            nn = 1
+            nn = 0
             if (rank == 0) write (*,fmt=form) " selectImportantBeams info - selected beam ",nn," reflection ",hkl(:,nn)," max intensity ",I_g(0)
             do kk = 1,nG
                 if (I_g(kk)>=imin) then
@@ -912,7 +990,7 @@
             real(kind=real64)               ::      spotRadius,ss
             real(kind=real64),dimension(2)  ::      dx
             real(kind=real64),dimension(:),allocatable          ::      I_g
-            real(kind=real64),parameter     ::      MIN_GREYSCALE = 1.0d0/256
+            real(kind=real64),parameter     ::      MIN_GREYSCALE = 1.0d0/(256*256*256)
 
         !---    get the g vectors
             gv = getGvectors(imb)
@@ -984,7 +1062,9 @@
                         end  do
                     end do
                 end if
-                call writePng( trim(prefix)//".diff.png",img )
+                img = max(0.0d0,min(1.0d0,img))
+                img = img ** (1.0d0/3)      !   gamma correction
+                call writePng( trim(prefix)//".diff.png",img,normalise=.true. )
             end if
 
             return

@@ -12,6 +12,7 @@
     !---    interface to C side
        
         interface
+
             function read_greyscale_png_file(file_name,width,height) bind(c, name='read_greyscale_png_file') result(img)
                 use, intrinsic                          ::  iso_c_binding, only: c_ptr,c_int,c_char
                 use                                     ::  iso_fortran_env
@@ -49,7 +50,6 @@
         public      ::      removePngExtension
         public      ::      readPng
         public      ::      writePng
-!        public      ::      setClockPath
         
         
         interface       readPng

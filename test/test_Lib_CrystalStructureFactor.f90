@@ -128,8 +128,8 @@
 
         else
             
-            call permittedReflections( Latt,nReflections,hkl )
-
+            call permittedReflections( Latt,hkl )
+            nReflections = ubound(hkl,dim=2)
         !---    bubble sort 
             do
                 ok = .true.

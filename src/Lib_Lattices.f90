@@ -709,7 +709,7 @@
     
     
         subroutine listPermittedReflections( this,rho_in )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
     !*      A helper routine - just gives the indices of permitted reflections 
     !*      ( in the positive octant )
             type(Lattice),intent(in)                ::      this
@@ -776,16 +776,16 @@
         end subroutine listPermittedReflections
 
 
-        subroutine permittedReflections( this,n,hkl,rho_in )
+        subroutine permittedReflections( this,hkl,rho_in )
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
     !*      return the permitted reflections [hkl]
     !*      such that (h)^2 + (k)^2 + (l)^2 <= rho^2
     !*      given the lattice type
             type(Lattice),intent(in)                        ::      this        
-            integer,intent(out)                             ::      n
             integer,dimension(:,:),allocatable,intent(out)  ::      hkl
             real(kind=real64),intent(in),optional           ::      rho_in
              
+            integer             ::      n
             integer             ::      mm,rr,pass
             integer             ::      hp,kp,lp,hx,kx,lx
             logical             ::      ok
@@ -801,7 +801,8 @@
                 do lp = -mm,+mm
                     do kp = -mm,+mm
                         do hp = -mm,+mm
-                            rr = lp*lp + kp*kp + hp*hp                        
+                            rr = lp*lp + kp*kp + hp*hp                  
+                             
                             select case(this%latt)
                                 case( LATTICE_FCC )
                                     if (rr > rho*rho + 1.0d-6) cycle
@@ -822,14 +823,14 @@
                             end select
                                                         
                             if (ok) then
-                                n = n + 1 
                                 if (pass==2) hkl(:,n) = (/ hp,kp,lp /)
+                                n = n + 1 
                             end if
                             
                         end do
                     end do
                 end do
-                if (pass==1) allocate(hkl(3,n))
+                if (pass==1) allocate(hkl(3,0:n-1))
                     
             end do        
             return

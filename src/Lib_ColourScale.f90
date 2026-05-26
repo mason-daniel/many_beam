@@ -1,6 +1,7 @@
 
     module Lib_ColourScale
 !---^^^^^^^^^^^^^^^^^^^^^^
+!*      (c) UKAEA 2023
 !*      simple module for converting a value (0:1) into a colour scale 24-bit rgb
         use iso_fortran_env
         implicit none
@@ -12,10 +13,11 @@
         public      ::      listAvailableColourScales      
         public      ::      getColourScale  
         public      ::      getColourScaleName
+        public      ::      shadeColour
+        public      ::      transparentColour
         
     !---        
-        
-        integer,public,parameter        ::      NCOLOURSCALES = 6
+        integer,public,parameter        ::      NCOLOURSCALES = 11
         integer,public,parameter        ::      COLOURSCALE_UNSET     = -1
         integer,public,parameter        ::      COLOURSCALE_GREYSCALE = 0
         integer,public,parameter        ::      COLOURSCALE_REDBLUE   = 1
@@ -23,16 +25,29 @@
         integer,public,parameter        ::      COLOURSCALE_VIRIDIS   = 3
         integer,public,parameter        ::      COLOURSCALE_MAGMA     = 4
         integer,public,parameter        ::      COLOURSCALE_BGR       = 5
+        integer,public,parameter        ::      COLOURSCALE_RAINBOW   = 6
+        integer,public,parameter        ::      COLOURSCALE_HOT       = 7
+        integer,public,parameter        ::      COLOURSCALE_FIRE      = 8
+        integer,public,parameter        ::      COLOURSCALE_IBM       = 9
+        integer,public,parameter        ::      COLOURSCALE_GREEN     = 10
+        
+        integer,public                  ::      COLOURSCALE_DEFAULT   = COLOURSCALE_IBM 
+    
         
         integer,private,parameter       ::      NKNOTS = 9
         
         integer,dimension(3,0:NKNOTS-1,0:NCOLOURSCALES-1),private,parameter   ::      COLOURSCALE_KNOTS = reshape( (/       &
-                            000,000,000 , 031,031,031 , 063,063,063 , 095,095,095 , 127,127,127 , 159,159,159 , 191,191,191 , 223,223,223 , 255,255,255 ,           &
-                            255,000,000 , 255,063,063 , 255,127,127 , 255,191,191 , 255,255,255 , 191,191,255 , 127,127,255 , 063,063,255 , 000,000,255 ,           &
-                            000,000,255 , 063,063,255 , 127,127,255 , 191,191,255 , 255,255,255 , 255,191,191 , 255,127,127 , 255,063,063 , 255,000,000 ,           &
-                            068,021,084 , 062,053,112 , 057,086,140 , 044,118,139 , 031,150,139 , 073,173,112 , 115,208,085 , 184,219,061 , 253,231,037 ,           &
-                            000,000,000 , 042,011,062 , 085,023,125 , 134,044,123 , 184,055,121 , 218,096,109 , 252,138,098 , 252,195,144 , 253,253,191 ,           &
-                            000,000,127 , 000,000,255 , 015,111,239 , 031,223,223 , 000,255,000 , 255,255,000 , 255,127,000 , 255,000,000 , 127,000,000             &
+                            000,000,000 , 031,031,031 , 063,063,063 , 095,095,095 , 127,127,127 , 159,159,159 , 191,191,191 , 223,223,223 , 255,255,255 ,           &            !  COLOURSCALE_GREYSCALE
+                            255,000,000 , 255,063,063 , 255,127,127 , 255,191,191 , 255,255,255 , 191,191,255 , 127,127,255 , 063,063,255 , 000,000,255 ,           &            !  COLOURSCALE_REDBLUE  
+                            000,000,255 , 063,063,255 , 127,127,255 , 191,191,255 , 255,255,255 , 255,191,191 , 255,127,127 , 255,063,063 , 255,000,000 ,           &            !  COLOURSCALE_BLUERED  
+                            068,021,084 , 062,053,112 , 057,086,140 , 044,118,139 , 031,150,139 , 073,173,112 , 115,208,085 , 184,219,061 , 253,231,037 ,           &            !  COLOURSCALE_VIRIDIS  
+                            000,000,000 , 042,011,062 , 085,023,125 , 134,044,123 , 184,055,121 , 218,096,109 , 252,138,098 , 252,195,144 , 253,253,191 ,           &            !  COLOURSCALE_MAGMA    
+                            000,000,127 , 000,000,255 , 015,111,239 , 031,223,223 , 000,255,000 , 255,255,000 , 255,127,000 , 255,000,000 , 127,000,000 ,           &            !  COLOURSCALE_BGR      
+                            128,000,000 , 255,000,000 , 255,128,000 , 255,255,000 , 000,255,000 , 000,191,191 , 000,000,255 , 191,000,191 , 255,255,255 ,           &            !  COLOURSCALE_RAINBOW  
+                            000,000,000 , 096,000,000 , 191,000,000 , 255,000,000 , 255,127,000 , 255,223,000 , 255,255,063 , 255,255,160 , 255,255,255 ,           &            !  COLOURSCALE_HOT      
+                            255,000,000 , 255,063,000 , 255,127,000 , 255,191,000 , 255,255,000 , 255,255,063 , 255,255,127 , 255,255,191 , 255,255,255 ,           &            !  COLOURSCALE_FIRE     
+                            100,143,255 , 110,119,248 , 120,094,240 , 170,066,184 , 220,038,127 , 237,068,063 , 254,097,000 , 255,137,000 , 255,176,000 ,           &            !  COLOURSCALE_IBM      
+                            000,191,000 , 000,191,000 , 000,191,000 , 000,191,000 , 000,191,000 , 000,191,000 , 000,191,000 , 000,191,000 , 000,191,000             &            !  COLOURSCALE_GREEN     
                              /) , (/3,NKNOTS,NCOLOURSCALES/) )
                             
         character(len=10),dimension(0:NCOLOURSCALES-1),public,parameter   ::      COLOURSCALE_NAME =  (/    &
@@ -41,7 +56,13 @@
                         "bluered   ",                                                                       &
                         "viridis   ",                                                                       &
                         "magma     ",                                                                       &
-                        "bgr       "     /)
+                        "bgr       ",                                                                       &        
+                        "rainbow   ",                                                                       &
+                        "hot       ",                                                                       &
+                        "fire      ",                                                                       &
+                        "IBM       ",                                                                       &
+                        "green     "                                                                        &
+                                                                                            /)
                             
                             
        
@@ -49,6 +70,12 @@
         
         interface   getRGB
             module procedure    getRGB0
+            module procedure    getRGB1
+        end interface                            
+        
+        interface   getRGB_double
+            module procedure    getRGB_double0
+            module procedure    getRGB_double1
         end interface                            
         
     !---        
@@ -86,7 +113,7 @@
         
 
         function getColourScaleName( cs ) result(colourscale)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      convert integer to character string 
             integer,intent(in)    ::      cs
             character(len=10)     ::      colourscale
@@ -97,7 +124,7 @@
         end function getColourScaleName        
 
         function getRGB0(colourscale,x) result( rgb )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             integer,intent(in)                      ::      colourscale
             real(kind=real64),intent(in)            ::      x
             integer                                 ::      rgb
@@ -125,13 +152,12 @@
             
             
             rgb = ishft(rr,16) + ishft(gg,8) + bb
-            !print *," getRGB0 ",colourscale,x,rr,gg,bb,rgb
             return
         end function getRGB0
                 
                 
-        function getRGB_double(colourscale,x) result( rgb )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        function getRGB_double0(colourscale,x) result( rgb )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             integer,intent(in)                      ::      colourscale
             real(kind=real64),intent(in)            ::      x
             real(kind=real64),dimension(3)          ::      rgb
@@ -149,14 +175,58 @@
                 xx = x*NKNOTS - ii
                 rgb(1:3) =  COLOURSCALE_KNOTS(1:3,ii,colourscale)*(1-xx) + COLOURSCALE_KNOTS(1:3,ii+1,colourscale)*xx 
             end if
-            rgb(1:3) = rgb(1:3) / 256.0d0
+            rgb(1:3) = rgb(1:3) / 256.0 
             
             return
-        end function getRGB_double
+        end function getRGB_double0
+                
+        function getRGB1(x) result( rgb )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            real(kind=real64),intent(in)            ::      x
+            integer                                 ::      rgb
+            rgb = getRGB(COLOURSCALE_DEFAULT,x)
+            return
+        end function getRGB1
                 
                 
+        function getRGB_double1(x) result( rgb )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            real(kind=real64),intent(in)            ::      x
+            real(kind=real64),dimension(3)          ::      rgb
+            rgb = getRGB_double0(COLOURSCALE_DEFAULT,x)
+            return
+        end function getRGB_double1
+                
+        pure function shadeColour( rgb,f,fc ) result( rgb_tone )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      change the tint/shade of a colour by mixing with intensity 0<f<1
+    !*      so that f=0 returns black, f=fc returns rgb and f=1 returns white
+            real(kind=real64),dimension(3),intent(in)       ::      rgb
+            real(kind=real64),intent(in)                    ::      f,fc
+            real(kind=real64),dimension(3)                  ::      rgb_tone
+            
+            real(kind=real64)   ::      xx
+                
+            if (f<0.5) then
+                rgb_tone = rgb*f/fc
+            else
+                xx = (f - fc)/(1-fc)
+                rgb_tone = xx + (1-xx)*rgb
+            end if            
                 
                 
+            return
+        end function shadeColour
+        
+        pure function transparentColour( rgb_back,rgb_fore,x ) result( rgb )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            real(kind=real64),dimension(3),intent(in)       ::      rgb_back,rgb_fore
+            real(kind=real64),intent(in)                    ::      x
+            real(kind=real64),dimension(3)                  ::      rgb
+             
+            rgb = rgb_back*(1-x) + rgb_fore*x    
+            return
+        end function transparentColour
         
 
 

@@ -78,6 +78,7 @@
         public          ::      getImagingSpace
         public          ::      getGvectors
         public          ::      getIntensity
+        public          ::      getCentreOfMassImage
         public          ::      getA
         public          ::      getnBuf
         public          ::      getSigma
@@ -386,8 +387,11 @@
     !*      special case- set two beam
             type(IntegrateManyBeams),intent(inout)      ::      this
             integer,dimension(:),intent(in)             ::      hkl_in
-            integer,dimension(size(hkl_in,dim=1),1)     ::      hkl_out
+            integer,dimension(size(hkl_in,dim=1),0:1)     ::      hkl_out
+            
+            hkl_out(:,0) = 0
             hkl_out(:,1) = hkl_in(:)
+            if (rank == 0) print *,"Lib_IntegrateManyBeams::changeGvectors0 info - converting to two beam mode"
             call changeGvectors1(this,rule = LIB_IMB_KEEP_ALL_GVEC,hkl_in = hkl_out)
             !call changeGvectors1(this,rule = LIB_IMB_BLOCK_HIGH_SG,hkl_in = hkl_out)
             return
@@ -403,7 +407,7 @@
             type(IntegrateManyBeams),intent(inout)      ::      this
             integer(kind=SELECTION_RULE),intent(in)     ::      rule
             real(kind=real64),intent(in),optional       ::      rho_in
-            integer,dimension(:,:),intent(in),optional  ::      hkl_in
+            integer,dimension(:,0:),intent(in),optional ::      hkl_in
 
             type(Gvectors)                      ::      gv2             !   a set of g-vectors with double the radius, used to compute all the crystal structure factors.
             integer                             ::      nG2
@@ -417,6 +421,7 @@
             real(kind=real64)                               ::      absxi
             real(kind=real64),dimension(:),allocatable      ::      modxi
             integer                                         ::      nmodxi
+            real(kind=real64),dimension(:,:),allocatable    ::      cap
 
             !R0 = RotationMatrix_Identity
 
@@ -425,8 +430,10 @@
             end if
 
             if (present(rho_in)) then
+                if (rank == 0) print *,"Lib_IntegrateManyBeams::changeGvectors1 info - finding permitted g-vectors"
                 call setGvectors( this,rule,rho_in=rho_in )  
             else if (present(hkl_in)) then
+                if (rank == 0) print *,"Lib_IntegrateManyBeams::changeGvectors1 info - setting selected g-vectors"
                 call setGvectors( this,rule,hkl_in=hkl_in )  
             else
                 call errorExit("changeGvectors1 error - need to call with either radius |hkl|<rho_in or specified vector [hkl_in]")
@@ -482,49 +489,26 @@
                 end if
                ! if ( LIB_IMB_DBG .or. (nG2<=10) ) then
                 allocate( modxi(nG2) ) ; modxi = 0 ; nModxi = 0        !   reduce the amount of screen output by only giving distinct |g|
-            !    if ( .true. ) then
-                    do ii = 1,nG2  
-                        absxi = abs(this%xi(ii)) 
-                        if (.not. any(abs(modxi(1:nmodxi)-absxi)<1.0e-4) ) then
-                            nmodxi = nmodxi + 1
-                            modxi(nmodxi) = absxi
-                            if (.not. isState(LOSSY)) then
-                                if (isMillerBravais(this%gv)) then
-                                    write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                                else                                
-                                    write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                                end if
+                do ii = 1,nG2  
+                    absxi = abs(this%xi(ii)) 
+                    if (.not. any(abs(modxi(1:nmodxi)-absxi)<1.0e-4) ) then
+                        nmodxi = nmodxi + 1
+                        modxi(nmodxi) = absxi
+                        if (.not. isState(LOSSY)) then
+                            if (isMillerBravais(this%gv)) then
+                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                            else                                
+                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                            end if
+                        else
+                            if (isMillerBravais(this%gv)) then
+                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
                             else
-                                if (isMillerBravais(this%gv)) then
-                                    write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                                else
-                                    write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                                end if
+                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
                             end if
                         end if
-                    end do
-                ! else
-                !     do ii = 1,nG2  
-                !         if (.not. isState(LOSSY)) then
-                !             if (isMillerBravais(this%gv)) then
-                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                !                 write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                !             else
-                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                !                 write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
-                !             end if
-                !         else
-                !             if (isMillerBravais(this%gv)) then
-                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                !                 write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                !             else
-                !                 if (norm2( real(hkl(:,ii)) ) <= 2.0)    &
-                !                 write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
-                !             end if
-                !         end if
-                !     end do
-                !     print *,"..."
-                ! end if
+                    end if
+                end do
                 print *,""
             end if
 
@@ -542,13 +526,22 @@
             kk = (/0,0,1/) * 2 * PI / wavelength( this%V ) 
             this%mb(1) = ManyBeam_ctor( geta(this),kk,this%gv,gv2,this%xi)
             if (this%nPrec > 2) then
-                !   precession
-                dphi = 2*PI / (this%nPrec-1)
-                do mm = 2,this%nPrec
-                    RR = RotationMatrix_ctor( (/0.0d0,1.0d0,0.0d0/),this%precAngle )             !   rotation about y axis by precession angle 
-                    RR = matmul( RotationMatrix_ctor( (/0.0d0,0.0d0,1.0d0/),(mm-2)*dphi ),RR )   !   rotation about z axis by angle phi 
-                    this%mb(mm) = ManyBeam_ctor( geta(this),matmul(RR,kk),this%gv,gv2,this%xi )
-                end do
+                if (isState(FIBONACCI_PREC)) then
+                    allocate(cap(3,this%nPrec))
+                    call fibonacci_cap(cap,this%precAngle)
+                    cap = cap * 2 * PI / wavelength( this%V ) 
+                    do mm = 1,this%nPrec
+                        this%mb(mm) = ManyBeam_ctor( geta(this), cap(:,mm) ,this%gv,gv2,this%xi )
+                    end do
+                else
+                    !   precession by rotation about z axis
+                    dphi = 2*PI / (this%nPrec-1)
+                    do mm = 2,this%nPrec
+                        RR = RotationMatrix_ctor( (/0.0d0,1.0d0,0.0d0/),this%precAngle )             !   rotation about y axis by precession angle 
+                        RR = matmul( RotationMatrix_ctor( (/0.0d0,0.0d0,1.0d0/),(mm-2)*dphi ),RR )   !   rotation about z axis by angle phi 
+                        this%mb(mm) = ManyBeam_ctor( geta(this),matmul(RR,kk),this%gv,gv2,this%xi )
+                    end do
+                end if
             end if
             call setManyBeamSet(this,.true.)
             
@@ -738,7 +731,13 @@
             img = 0
             
             
-        
+            if (rank==0) then
+                print *,"Lib_IntegrateManyBeams::getIntensity0a info - ng = ",getn(this%gv)
+                print *,"Lib_IntegrateManyBeams::getIntensity0a info - g(1) = ",getG(this%gv,ii)
+                
+            end if
+
+
             mx = getMx(this%is)
             my = getMy(this%is)
             !print *,"Lib_IntegrateManyBeams::getIntensity0a info - rank ",rank," nx,ny,mx,my,nPrec ",nx,ny,mx,my,this%nPrec
@@ -866,6 +865,148 @@
 
             return
         end subroutine getIntensity1
+
+
+        subroutine getCentreOfMassImage(this,img,df)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      get the result combining all g-vectors except [000].
+    !*      compute the centre of mass of the intensity of the diffracted beams
+    !*      gather on rank 0
+            type(IntegrateManyBeams),intent(in)                 ::      this
+            real(kind=real64),dimension(:,:,:),allocatable      ::      img     !   (3,0:nx-1,0:ny-1)   with 1:3 = x,y,z centre of mass position
+            logical,intent(in)          ::      df          !   set background to dark grey or bright?
+            integer                     ::      ii
+            integer                     ::      ix,iy,nx,ny
+            integer                     ::      jx,jy,mx,my
+            integer                     ::      pp,lbx,ubx,lby,uby
+            
+            integer                     ::      mm
+            real(kind=real64)           ::      Ig,maxI,minI,aa,bb
+            real(kind=real64),dimension(3)  ::  comg
+            real(kind=real64),dimension(3)  ::  gvec
+            complex(kind=real64)        ::      phig
+ 
+
+#ifdef MPI
+            real(kind=real64),dimension(:,:,:),allocatable    ::      I_tmp
+            integer                     ::      ierror
+#endif
+ 
+
+        !---    allocate space for output image
+            nx = getNx(this%is)
+            ny = getNy(this%is)
+            allocate(img(3,0:nx-1,0:ny-1))
+            img = 0
+            
+            
+        
+            mx = getMx(this%is)
+            my = getMy(this%is)
+            !print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - rank ",rank," nx,ny,mx,my,nPrec ",nx,ny,mx,my,this%nPrec
+            do jy = 0,my-1
+                do jx = 0,mx-1
+
+                !---    find who has the blocks of this image
+                    pp = whoseBlock( this%is,jx,jy )
+                    call blockExtent( this%is,pp,lbx,ubx,lby,uby )
+
+                   ! print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - rank ",pp," computing ",lbx,":",ubx,",",lby,":",uby
+                    if (pp == rank) then
+                !---    compute intensity in block
+                        !print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - rank ",pp," computing ",lbx,":",ubx,",",lby,":",uby
+                        do iy = lby,uby
+                            do ix = lbx,ubx
+                                comg = 0.0d0
+                                do mm = 1,this%nPrec
+                                    do ii = 1,getn(this%gv)
+                                        phig = this%slice(mm)%phi( ii,ix,iy )
+                                        Ig = real(phig)*real(phig) + aimag(phig)*aimag(phig)
+                                        gvec(:) = getG(this%gv,ii)
+                                        comg(:) = comg(:) + Ig*gvec(:)
+                                    end do
+                                end do
+                                img(1:3,ix,iy) = comg(1:3)
+                            end do
+                        end do
+                        
+                    end if
+ 
+                end do
+            end do
+
+#ifdef MPI
+            if (nprocs>1) then
+                allocate(I_tmp(3,0:nx-1,0:ny-1))
+                I_tmp = img
+                call MPI_REDUCE( I_tmp,img,3*nx*ny,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,ierror )
+            end if
+#endif        
+
+            img = img / this%nPrec
+
+        !---    now scale range from 0:1, remove the average value, and shift RGB->RBG for colourblind-friendly output
+
+            if (rank == 0) then
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - before image colour scaling"
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gx ",minval(img(1,:,:)),maxval(img(1,:,:)),sum(img(1,:,:))/(nx*ny)
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gy ",minval(img(2,:,:)),maxval(img(2,:,:)),sum(img(2,:,:))/(nx*ny)
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gz ",minval(img(3,:,:)),maxval(img(3,:,:)),sum(img(3,:,:))/(nx*ny)
+            end if
+
+            maxI = maxval(img(:,:,:))
+            minI = minval(img(:,:,:))
+            Ig = sum(img(:,:,:))/(3*nx*ny)
+            
+            if (df) then
+                if (maxI-Ig > 3*(Ig-minI)) then
+                    !   want to scale avg->0.25, and max->1
+                    aa = 0.75d0 / max(1.0d-8,maxI-Ig)
+                    bb = (0.25d0*maxI-Ig) / max(1.0d-8,maxI-Ig)                    
+                else
+                    !   want to scale avg->0.25, and min->0
+                    aa = 0.25d0 / max(1.0d-8,Ig-minI)
+                    bb = (-0.25d0*minI) / max(1.0d-8,Ig-minI)
+                end if
+            else
+                if (3*(maxI-Ig) > Ig-minI) then
+                    !   want to scale avg->0.75, and max->1
+                    aa = 0.25d0 / max(1.0d-8,maxI-Ig)
+                    bb = (0.75d0*maxI-Ig) / max(1.0d-8,maxI-Ig)
+                else
+                    !   want to scale avg->0.75, and min->0
+                    aa = 0.75d0 / max(1.0d-8,Ig-minI)
+                    bb = (-0.75d0*minI) / max(1.0d-8,Ig-minI)
+                end if
+            end if
+            !if (rank == 0)  print *,"scaling img -> a img + b , a = ",aa," b = ",bb
+            img = aa*img + bb
+
+
+
+
+            do iy = 0,ny-1
+                do ix = 0,nx-1
+                    img(3,ix,iy) = img(2,ix,iy)                    
+                end do
+            end do
+            if (df) then
+                img(2,:,:) = 0.25d0
+            else
+                img(2,:,:) = 0.75d0
+            end if
+
+            if (rank == 0) then
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - after image colour scaling"
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gx ",minval(img(1,:,:)),maxval(img(1,:,:)),sum(img(1,:,:))/(nx*ny)
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gy ",minval(img(2,:,:)),maxval(img(2,:,:)),sum(img(2,:,:))/(nx*ny)
+                print *,"Lib_IntegrateManyBeams::getCentreOfMassImage info - min/max/avg gz ",minval(img(3,:,:)),maxval(img(3,:,:)),sum(img(3,:,:))/(nx*ny)
+            end if
+
+            return
+        end subroutine getCentreOfMassImage
+
+
 
         subroutine selectFoilTilt( this,hkl,theta_max,nTrial,bright, R )
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1125,7 +1266,7 @@
             type(IntegrateManyBeams),intent(inout)          ::      this
             integer(kind=SELECTION_RULE),intent(in)         ::      rule
             real(kind=real64),intent(in),optional           ::      rho_in          !   compute all g-vectors within given radius
-            integer,dimension(:,:),intent(in),optional      ::      hkl_in          !   compute sepcified reflections
+            integer,dimension(:,0:),intent(in),optional      ::      hkl_in          !   compute sepcified reflections
 
             real(kind=real64),dimension(3,3)        ::      a_conventional_cell
             integer                                 ::      nn
@@ -1147,7 +1288,7 @@
                 if (present(rho_in)) then
                     print *,"Lib_IntegrateManyBeams::setGvectors info - many beam mode, radius |[hkl]|<=",rho_in
                 else if (present(hkl_in)) then
-                    print *,"Lib_IntegrateManyBeams::setGvectors info - selecting [000] + additional ",size(hkl_in,dim=2)," beams"
+                    print *,"Lib_IntegrateManyBeams::setGvectors info - selecting [000] + additional ",ubound(hkl_in,dim=2)," beams"
                 end if
             end if
 
@@ -1157,20 +1298,25 @@
             nn = 0
             if (present(rho_in)) then
             !---    find all reflections within certain radius
-                call permittedReflections( this%latt,nn,hkl,rho_in )            
+                call permittedReflections( this%latt,hkl,rho_in )    
+                nn = ubound(hkl,dim=2)        
+                if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - n permitted reflections ",nn 
+
             else if (present(hkl_in)) then
-                nn = size(hkl_in,dim=2) + 1
-                allocate(hkl(3,nn))
-                hkl(:,1) = 0
+
+                nn = ubound(hkl_in,dim=2) 
+                allocate(hkl(3,0:nn))
+                hkl(:,0) = 0
 
                 if (size(hkl_in,dim=1)==3) then
-                    hkl(:,2:) = hkl_in(:,1:)
+                    hkl(:,0:) = hkl_in(:,0:)
                 else
-                    do ii = 1,size(hkl_in,dim=2)
-                        hkl(:,ii+1) = MillerBravaisToMiller_plane( hkl_in(:,ii) )
+                    do ii = 0,nn
+                        hkl(:,ii) = MillerBravaisToMiller_plane( hkl_in(:,ii) )
                     end do
                 end if
             end if
+            
 
         !---    find the transmitted beam vector
             kk = (/0,0,1/) * ME * velocity( this%V )/ HBAR                 
@@ -1186,7 +1332,7 @@
         !---    check which reflections we will keep 
 
             allocate(keep(nn))
-            this%gv = Gvectors_ctor( a_conventional_cell,hkl(:,2:nn) )        !   make a temporary set of g-vectors, so that we can test for Laue zones
+            this%gv = Gvectors_ctor( a_conventional_cell,hkl(:,1:nn) )        !   make a temporary set of g-vectors, so that we can test for Laue zones
             call rotate(this%gv,this%dfg_bar)
             do ii = 1,nn                
                 gg = getg( a_conventional_cell,hkl(:,ii) )
@@ -1210,7 +1356,7 @@
         !---    bubble sort permitted reflections
             do
                 done = .true.
-                do ii = 1,nn-1
+                do ii = 0,nn-1
                     if ( dot_product(hkl(:,ii),hkl(:,ii)) > dot_product(hkl(:,ii+1),hkl(:,ii+1)) ) then
                         hkl_swp(:)  = hkl(:,ii)
                         hkl(:,ii)   = hkl(:,ii+1)
@@ -1221,7 +1367,7 @@
                 if (done) exit
             end do
         !---    now permitted reflection 1 should be [000]
-
+            if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - reflection 0 = ",hkl(:,0)
          
     !---    construct a g-vector object            
             if (getLatticeType(this%latt) == LATTICE_HCP) then
@@ -1229,11 +1375,12 @@
                 do ii = 1,nn
                     hjkl(:,ii) = nint( MillerToMillerBravais_plane(real(hkl(:,ii),kind=real64)) )
                 end do
-                this%gv = Gvectors_ctor(a_conventional_cell,hjkl(:,2:nn))
+                this%gv = Gvectors_ctor(a_conventional_cell,hjkl(:,1:nn))
             else
-                this%gv = Gvectors_ctor(a_conventional_cell,hkl(:,2:nn))
+                this%gv = Gvectors_ctor(a_conventional_cell,hkl(:,1:nn))
             end if
  
+            if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - info"
             if (rank==0) call report(this%gv)
             if (rank==0) print *,""
             call setGvectorsSet(this,.true.)

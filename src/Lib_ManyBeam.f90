@@ -264,17 +264,17 @@
             gg = 0
             if (isMillerBravais(this%gv)) then
                 write(unit=uu,fmt='(a,a16,3a12,2a36)') repeat(" ",oo+4),"Miller-Bravais","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
-                write(unit=uu,fmt='(a,4i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
+!                write(unit=uu,fmt='(a,4i4,f12.6,2g12.5,9f12.6)') repeat(" ",oo+4),(/0,0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
                     gg = getG(this%gv,ii)
-                    write(unit=uu,fmt='(a,4i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg(:),this%kplusgonk(:,ii)
+                    write(unit=uu,fmt='(a,4i4,f12.6,2g12.5,9f12.6)') repeat(" ",oo+4),gethjkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg(:),this%kplusgonk(:,ii)
                 end do
             else
                 write(unit=uu,fmt='(a,a12,3a12,2a36)') repeat(" ",oo+4),"Miller index","S_g (1/A)"," Re[xi_g]"," Im[xi_g]","    g"//repeat(" ",31),"    (k+g)/|k|"//repeat(" ",23)
-                write(unit=uu,fmt='(a,3i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
+!                write(unit=uu,fmt='(a,3i4,f12.6,2g12.5,9f12.6)') repeat(" ",oo+4),(/0,0,0/),this%Sg(0),real(1/this%iXi(0,0)),aimag(1/this%iXi(0,0)),gg,this%kplusgonk(:,0)
                 do ii = 1,this%nG
                     gg = getG(this%gv,ii)
-                    write(unit=uu,fmt='(a,3i4,f12.6,2g12.6,9f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg,this%kplusgonk(:,ii)
+                    write(unit=uu,fmt='(a,3i4,f12.6,2g12.5,9f12.6)') repeat(" ",oo+4),gethkl(this%gv,ii),this%Sg(ii),real(1/this%iXi(ii,0)),aimag(1/this%iXi(ii,0)),gg,this%kplusgonk(:,ii)
                 end do
             end if
 
