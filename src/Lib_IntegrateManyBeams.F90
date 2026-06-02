@@ -76,10 +76,14 @@
         public          ::      delete
         public          ::      integrate
         public          ::      getImagingSpace
+        public          ::      getAtomSpace
+        public          ::      getElement
+        public          ::      getAtomPosition
         public          ::      getGvectors
         public          ::      getIntensity
         public          ::      getCentreOfMassImage
         public          ::      getA
+        public          ::      getnAtoms
         public          ::      getnBuf
         public          ::      getSigma
         public          ::      selectFoilTilt
@@ -168,6 +172,10 @@
 
         interface       getA
             module procedure            getA0
+        end interface
+
+        interface       getnAtoms
+            module procedure            getnAtoms0
         end interface
 
         interface       getnBuf
@@ -462,7 +470,7 @@
             end if
             allocate(Vg(nG2))
             if (rank == 0) then
-                call computeCrystalStructureFactors( this%element,hkl, this%T,this%V, Vg, (/this%a0,this%a0,this%a0/) )                  !    note computeCrystalStructureFactors wants accelerator voltage in V not kV.
+                call computeCrystalStructureFactors( this%element,hkl, this%T,this%V, Vg, (/this%a0,this%a0,this%a0/),latt_in = this%latt )                  !    note computeCrystalStructureFactors wants accelerator voltage in V not kV.
             end if
 #ifdef MPI
             call MPI_BCAST( Vg,nG2,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,ii)
@@ -1151,6 +1159,30 @@
         end function getImagingSpace
 
 
+        function getAtomSpace(this) result(as)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            type(IntegrateManyBeams),intent(in)     ::      this
+            type(AtomSpace)                         ::      as
+            as = this%as
+            return
+        end function getAtomSpace
+
+        pure character(len=XYZFILE_ATOMNAMELENGTH) function getElement(this) 
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            type(IntegrateManyBeams),intent(in)     ::      this
+            getElement = this%element
+            return
+        end function getElement
+
+        pure function getAtomPosition(this,i) result(r)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            type(IntegrateManyBeams),intent(in)     ::      this
+            integer,intent(in)                      ::      i
+            real(kind=real64),dimension(3)          ::      r
+            r = this%r(:,i)
+            return
+        end function getAtomPosition
+
 
         function getGvectors(this) result(gv)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1819,7 +1851,7 @@
             end if
 
         !---    dump of atom positions and z-slice
-            if (isState(OPXYZ) .and. (iz==0)) then   
+            if (isState(OPXYZPLUS) .and. (iz==0)) then   
                 if (isState(GAUGETRANSFORM)) then 
                     print *,"Lib_IntegrateManyBeams::computePhaseFields info - rank ",rank," writing grad_arg_x slice to .xyz"
                     open(unit=500,file=trim(numberFile(trim(opxyz_file_prefix),rank,"xyz")),action="write")
@@ -1854,6 +1886,7 @@
                     close(unit=500)
                 end if
             end if
+
 
 
         !---    unpack the computed g-vectors
@@ -1916,6 +1949,14 @@
         end function getA0
 
         
+        pure integer function getnAtoms0(this)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      returns number of atoms stored on this processor
+            type(IntegrateManyBeams),intent(in)           ::      this            
+            getnAtoms0 = this%nAtoms
+            return
+        end function getnAtoms0
+
         pure integer function getnBuf0(this) 
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             type(IntegrateManyBeams),intent(in)          ::      this

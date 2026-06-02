@@ -2,21 +2,35 @@
 
 ## compilation for mpi executable CSD3
 
+```
 mkdir build ; cd build
 
 cmake ../. -DCMAKE_Fortran_COMPILER=mpiifort -DCMAKE_C_COMPILER=mpiicc -DCMAKE_BUILD_TYPE= -DCMAKE_SERIAL=False
+```
 
 ## first run
 
+```
 ./bin/run_SimulatedTEM
+```
 
 should give a list of runtime options.
 
 ## typical run
 
+```
 ./bin/run_SimulatedTEM -f inputFe.xyz -g 2,0,0 -a0 2.8665 
+```
 
 where inputFe.xyz is an extended xyz format file containing Fe atoms, with an [001] axis in the z-direction, and lattice parameter 2.8665A.
+
+## matching up to ovito's dxa file
+
+The box of atoms is tilted in order to give good diffraction conditions, so you never quite look down a zone axis. 
+You can dump the atoms present in the image in their tilted positions using -opxyz.
+Note that the atom box no longer has periodic boundary conditions after tilting, so you may want to toggle PBC off in ovito too.
+
+TODO: Only works in serial run at the moment- I'd need to gather all the atoms onto rank=0 to get this to work in parallel.
 
 
 ## Specifying the lattice

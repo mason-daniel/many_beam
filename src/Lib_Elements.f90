@@ -149,9 +149,10 @@
 
     
         pure integer function whichElement0(el)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      return the element code for the element.
     !*      note: this is not the atomic number or mass, but the position in the ELNAMES table
+
             character(len=*),intent(in)         ::      el
             character(len=len(el))              ::      el_uc
             integer         ::      ii
@@ -188,7 +189,6 @@
             end do
             return
         end function whichElement1
-
 
 
 

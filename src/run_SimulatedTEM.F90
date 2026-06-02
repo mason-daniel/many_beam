@@ -13,11 +13,7 @@
 !*          v.0.0.3         Feb 26      Fix to selection rules - thanks to Thomas Jourdan (CEA) for spotting mod vs modulo bug
 !*          v.0.0.4         Mar 26      Option to output image from all diffracted beams
 !*          v.0.0.5         Apr 26      Option to find centre-of-mass in diffraction pattern
-
-!*      good break points to set (GDB)
-!*      b run_SimulatedTEM.f90:287           !   after command line params
-!*      b run_SimulatedTEM.f90:414           !   after initialisation
-!*      b run_SimulatedTEM.f90:460           !   after foil tilt
+!*          v.0.1.0         May 26      thanks to Aslak Fellman (Helsinki) spotted bug in handling of unknown element type. Change to default op filename for .xyz files. dump .xyz file in tilted position ( serial run only )
 
 
 
@@ -29,6 +25,8 @@
         use Lib_Filenames
         use Lib_Png
         use Lib_IntegrateManyBeams
+        use Lib_ImagingSpace
+        use Lib_AtomSpace
         use Lib_Quaternions
         use Lib_Gvectors
         use Lib_Callipers
@@ -43,7 +41,7 @@
         implicit none
 
 
-        character(len=8),parameter          ::      VERSION = "0.0.4"
+        character(len=8),parameter          ::      VERSION = "0.1.0"
 
 
         real(kind=real64),parameter         ::      PI = 3.14159265390d0
@@ -86,6 +84,7 @@
         real(kind=real64),dimension(9)      ::      Umat = (/ 1,0,0,0,1,0,0,0,1 /)
         logical                             ::      specifiedRmat = .false.
         logical                             ::      specifiedUmat = .false.
+        logical                             ::      tiltonly = .false.      !   option to quit after finding goo tilt angle
 
     !---    physical variables
         type(IntegrateManyBeams)            ::      imb
@@ -95,6 +94,7 @@
         integer,dimension(4)                ::      dat
         character(len=256)                  ::      dummy
         integer,dimension(:,:),allocatable  ::      hkl_important
+        type(AtomSpace)                     ::      as
 
     !---    dummy variables        
         integer             ::      ierror
@@ -102,6 +102,9 @@
         real(kind=real64)   ::      dd
         character(len=5)    ::      aa
         logical             ::      ok
+        integer,dimension(2,3)  ::  bb
+        real(kind=real64),dimension(3,3)    ::  a_super
+        real(kind=real64),dimension(3)      ::  rr
 
     !---    timing
         integer,parameter               ::      TIMER = kind(1_int32)
@@ -145,6 +148,7 @@
         call setState(TWOBEAM,.false.)
         call setState(GAUGETRANSFORM,.false.)
         call setState(OPXYZ,.false.)
+        call setState(OPXYZPLUS,.false.)
         call setState(OPPNG,.true.)
         call setState(OPDIFF,.false.)
 
@@ -222,10 +226,7 @@
         call get( cla,"2",attset ,LIB_CLA_OPTIONAL,"          compute in two beam approximation",CLA_CALC )                 
         if (hasArgument(cla,"2")) call setState(TWOBEAM,attset)
  
-                      
-
-
-
+                    
 
 
         call get( cla,"imin",imin,LIB_CLA_OPTIONAL,"       intensity threshold for beam selection",CLA_CALC )         
@@ -236,11 +237,22 @@
         attset = isState(GAUGETRANSFORM)
         call get( cla,"gauge",attset ,LIB_CLA_OPTIONAL,"      use gauge transformation (deprecated)",CLA_CALC )                 
         if (hasArgument(cla,"gauge")) call setState(GAUGETRANSFORM,attset)
+
+        call get( cla,"tilt",tiltonly ,LIB_CLA_OPTIONAL,"     tilt foil then end - no image generated",CLA_CALC )                 
+        
  
+        attset = isState(OPXYZPLUS)
+        call get( cla,"opxyz+",attset ,LIB_CLA_OPTIONAL,"     output phase field",CLA_OUTPUT )                 
+        if (hasArgument(cla,"opxyz+")) call setState(OPXYZPLUS,attset)
+
         attset = isState(OPXYZ)
-        call get( cla,"opxyz",attset ,LIB_CLA_OPTIONAL,"      output phase field",CLA_OUTPUT )                 
+        call get( cla,"opxyz",attset ,LIB_CLA_OPTIONAL,"      output atom positions after tilt (serial only)",CLA_OUTPUT )                 
         if (hasArgument(cla,"opxyz")) call setState(OPXYZ,attset)
-        if (isState(OPXYZ)) opxyz_file_prefix = outfile
+        if (isState(OPXYZ).and.(nProcs>1)) then
+            if (rank==0) print *,"run_SimulatedTEM warning - asked for -opxyz but >1 procs. Ignoring"
+            call setState(OPXYZ,.false.)
+        end if
+            
 
         attset = isState(OPPNG)
         call get( cla,"png",attset ,LIB_CLA_OPTIONAL,"        output result as .png file",CLA_OUTPUT )                 
@@ -337,8 +349,14 @@
                 write(aa,fmt='(f4.2)') n_g
                 outfile = trim(outfile)//".ng"//trim(adjustl(aa))
             end if
-            
+        
+
+        
         end if
+        
+        opxyz_file_prefix = outfile
+         
+        
 
         specifiedUmat = hasArgument(cla,"U")
 
@@ -420,6 +438,7 @@
             print *,"   calculation settings"
             print *,"   ^^^^^^^^^^^^^^^^^^^^"
             call reportDashboard(o=8)
+            print *,"       tilt then quit          ",tiltonly
             if (.not. isState(TWOBEAM)) &
             print *,"       beam intensity thresh   ",imin   
             print *,"       size of rho calc block  ",zlayers
@@ -534,6 +553,52 @@
             print *,""
         end if
 
+
+!******************************************************************************    
+!*    
+!*      DUMP .xyz file pof atom positions if requested
+!*    
+!*    
+!******************************************************************************    
+
+
+        !---    dump of atom positions and z-slice
+            if (isState(OPXYZ) .and. (rank==0)) then   
+                print *,"run_SimulatedTEM info - writing atom positions """//trim(opxyz_file_prefix)//".xyz"//""""
+                open(unit=500,file=trim(opxyz_file_prefix)//".xyz",action="write")
+                    as = getAtomSpace(imb)
+                    call getBounds(getImagingSpace(imb),bb)
+                    dd = 1/getia(as)
+                    a_super = 0
+                    ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
+                    !print *,"ix = ",ix
+                    a_super(1,1) = (bb(2,1) - 2*ix)*dd
+                    a_super(2,2) = (bb(2,2) - 2*ix)*dd
+                    a_super(3,3) = (bb(2,3) - 2*ix)*dd
+                    !print *,bb(:,1) 
+                    !print *,bb(:,2) 
+                    iy = 0 ; Nx = bb(2,1) + 1 ; Ny = bb(2,2) + 1 
+                    do ii = 1,getnAtoms(imb)
+                        rr = getAtomPosition(imb,ii) 
+                        if ( (rr(1)>=ix).and.(rr(1)<=Nx-1-ix).and.(rr(2)>=ix).and.(rr(2)<=Ny-1-ix) ) iy = iy + 1
+                    end do
+
+                    write(unit=500,fmt='(i8)') iy !getnAtoms(imb)
+                    write(unit=500,fmt='(a,9f12.6,a,3f12.6,a)') "Lattice=""",a_super,""" Origin=""",(/ix,ix,ix/)*dd,""" Properties=Species:S:1:Pos:R:3"
+                    do ii = 1,getnAtoms(imb)
+                        rr = getAtomPosition(imb,ii) 
+                        if ( (rr(1)>=ix).and.(rr(1)<=Nx-1-ix).and.(rr(2)>=ix).and.(rr(2)<=Ny-1-ix) )    &
+                        write(unit=500,fmt='(a,10f16.8)') getElement(imb),rr*dd
+                    end do
+                close(unit=500)
+            end if
+
+
+
+
+
+
+        if (.not. tiltonly) then
 
 !******************************************************************************    
 !*    
@@ -658,6 +723,7 @@
                     end if
 
                     ix = getNbuf( imb )     !   buffer used to ensure image is correctly generated
+
                     call writePng( trim(outfile)//".png",img(ix:Nx-1-ix,ix:Ny-1-ix),normalise=pngNorm )
 
                 end if
@@ -667,7 +733,9 @@
             call pause(tt(T_OUTPUT))
         end if
         
-
+        else
+            if (rank==0) print *,"run_SimulatedTEM info - compute tilt then quit"
+        end if      !   tiltonly
 
 !******************************************************************************    
 !*    

@@ -39,7 +39,7 @@
     module Lib_inputReal
 !---^^^^^^^^^^^^^^^^^^^^
 !*      
-
+        
         use iso_fortran_env
         use Lib_Elements
         implicit none
@@ -98,17 +98,26 @@
 
 
 
-        subroutine getScatteringAmplitude(el,s,f)
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine getScatteringAmplitude(el,s,f,ok)
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      construct the scattering amplitude for element el
             character(len=*),intent(in)                     ::      el
             real(kind=real64),dimension(0:),intent(out)     ::      s
             real(kind=real64),dimension(0:),intent(out)     ::      f
+            logical,intent(out),optional                    ::      ok
             integer                     ::      ii,ee
             real(kind=real64)           ::      ds
 
             ds = ( LIB_INPUTREAL_SMAX-LIB_INPUTREAL_SMIN )/LIB_INPUTREAL_NS
             ee = whichElement(el)
+            if (present(ok)) then
+                ok = ( (ee>=5).and.(ee<=54) )
+                print *,"Lib_inputReal::getScatteringAmplitude info - element """//trim(el)//""" is indexed ",ee 
+                if (.not. ok) then
+                    write(unit=0,fmt='(a)') "Lib_inputReal::getScatteringAmplitude ERROR - element does not have scattering amplitude tables"
+                    stop
+                end if
+            end if
 
             do ii = 0,LIB_INPUTREAL_NS
                 s(ii) = LIB_INPUTREAL_SMIN + ii*ds
@@ -125,13 +134,13 @@
     !*      and the value s = 1/4pi.    
             character(len=*),intent(in)         ::      el
             real(kind=real64),intent(in)        ::      s
-            integer         ::      ii
-            ii = whichElement(el)
-            if (ii==0) then
+            integer         ::      ee
+            ee = whichElement(el)
+            if (ee==0) then
                 print *,"Lib_inputReal::scatteringAmplitude error - did not recognise input element """//trim(el)//""""
                 scatteringAmplitude0 = 0
             else
-                scatteringAmplitude0 = scatteringAmplitude1(ii,s)
+                scatteringAmplitude0 = scatteringAmplitude1(ee,s)
             end if
 
             return
@@ -145,58 +154,58 @@
             real(kind=real64),intent(in)        ::      s
 
             select case(i)
-                case( 1) ;  scatteringAmplitude1 = FLI(s)
-                case( 2) ;  scatteringAmplitude1 = FBE(s)
-                case( 3) ;  scatteringAmplitude1 = FC (s)
-                case( 4) ;  scatteringAmplitude1 = FO (s)
-                case( 5) ;  scatteringAmplitude1 = FNA(s)
-                case( 6) ;  scatteringAmplitude1 = FMG(s)
-                case( 7) ;  scatteringAmplitude1 = FAL(s)
-                case( 8) ;  scatteringAmplitude1 = FSI(s)
-                case( 9) ;  scatteringAmplitude1 = FK (s)
-                case(10) ;  scatteringAmplitude1 = FCA(s)
-                case(11) ;  scatteringAmplitude1 = FTI(s)
-                case(12) ;  scatteringAmplitude1 = FV (s)
-                case(13) ;  scatteringAmplitude1 = FCR(s)
-                case(14) ;  scatteringAmplitude1 = FMN(s)
-                case(15) ;  scatteringAmplitude1 = FFE(s)
-                case(16) ;  scatteringAmplitude1 = FCO(s)
-                case(17) ;  scatteringAmplitude1 = FNI(s)
-                case(18) ;  scatteringAmplitude1 = FCU(s)
-                case(19) ;  scatteringAmplitude1 = FZN(s)
-                case(20) ;  scatteringAmplitude1 = FGA(s)
-                case(21) ;  scatteringAmplitude1 = FGE(s)
-                case(22) ;  scatteringAmplitude1 = FAS(s)
-                case(23) ;  scatteringAmplitude1 = FRB(s)
-                case(24) ;  scatteringAmplitude1 = FSR(s)
-                case(25) ;  scatteringAmplitude1 = FY (s)
-                case(26) ;  scatteringAmplitude1 = FZR(s)
-                case(27) ;  scatteringAmplitude1 = FNB(s)
-                case(28) ;  scatteringAmplitude1 = FMO(s)
-                case(29) ;  scatteringAmplitude1 = FRU(s)
-                case(30) ;  scatteringAmplitude1 = FRH(s)    
-                case(31) ;  scatteringAmplitude1 = FPD(s)
-                case(32) ;  scatteringAmplitude1 = FAG(s)
-                case(33) ;  scatteringAmplitude1 = FCD(s)
-                case(34) ;  scatteringAmplitude1 = FSN(s)
-                case(35) ;  scatteringAmplitude1 = FCS(s)
-                case(36) ;  scatteringAmplitude1 = FBA(s)
-                case(37) ;  scatteringAmplitude1 = FLA(s)
-                case(38) ;  scatteringAmplitude1 = FCE(s)
-                case(39) ;  scatteringAmplitude1 = FGD(s)
-                case(40) ;  scatteringAmplitude1 = FHF(s)    
-                case(41) ;  scatteringAmplitude1 = FTA(s)
-                case(42) ;  scatteringAmplitude1 = FW (s)
-                case(43) ;  scatteringAmplitude1 = FRE(s)
-                case(44) ;  scatteringAmplitude1 = FOS(s)
-                case(45) ;  scatteringAmplitude1 = FIR(s)
-                case(46) ;  scatteringAmplitude1 = FPT(s)
-                case(47) ;  scatteringAmplitude1 = FAU(s)
-                case(48) ;  scatteringAmplitude1 = FTL(s)
-                case(49) ;  scatteringAmplitude1 = FPB(s)
-                case(50) ;  scatteringAmplitude1 = FTH(s)    
+                case( 5) ;  scatteringAmplitude1 = FLI(s)
+                case( 6) ;  scatteringAmplitude1 = FBE(s)
+                case( 7) ;  scatteringAmplitude1 = FC (s)
+                case( 8) ;  scatteringAmplitude1 = FO (s)
+                case( 9) ;  scatteringAmplitude1 = FNA(s)
+                case(10) ;  scatteringAmplitude1 = FMG(s)
+                case(11) ;  scatteringAmplitude1 = FAL(s)
+                case(12) ;  scatteringAmplitude1 = FSI(s)
+                case(13) ;  scatteringAmplitude1 = FK (s)
+                case(14) ;  scatteringAmplitude1 = FCA(s)
+                case(15) ;  scatteringAmplitude1 = FTI(s)
+                case(16) ;  scatteringAmplitude1 = FV (s)
+                case(17) ;  scatteringAmplitude1 = FCR(s)
+                case(18) ;  scatteringAmplitude1 = FMN(s)
+                case(19) ;  scatteringAmplitude1 = FFE(s)
+                case(20) ;  scatteringAmplitude1 = FCO(s)
+                case(21) ;  scatteringAmplitude1 = FNI(s)
+                case(22) ;  scatteringAmplitude1 = FCU(s)
+                case(23) ;  scatteringAmplitude1 = FZN(s)
+                case(24) ;  scatteringAmplitude1 = FGA(s)
+                case(25) ;  scatteringAmplitude1 = FGE(s)
+                case(26) ;  scatteringAmplitude1 = FAS(s)
+                case(27) ;  scatteringAmplitude1 = FRB(s)
+                case(28) ;  scatteringAmplitude1 = FSR(s)
+                case(29) ;  scatteringAmplitude1 = FY (s)
+                case(30) ;  scatteringAmplitude1 = FZR(s)
+                case(31) ;  scatteringAmplitude1 = FNB(s)
+                case(32) ;  scatteringAmplitude1 = FMO(s)
+                case(33) ;  scatteringAmplitude1 = FRU(s)
+                case(34) ;  scatteringAmplitude1 = FRH(s)    
+                case(35) ;  scatteringAmplitude1 = FPD(s)
+                case(36) ;  scatteringAmplitude1 = FAG(s)
+                case(37) ;  scatteringAmplitude1 = FCD(s)
+                case(38) ;  scatteringAmplitude1 = FSN(s)
+                case(39) ;  scatteringAmplitude1 = FCS(s)
+                case(40) ;  scatteringAmplitude1 = FBA(s)
+                case(41) ;  scatteringAmplitude1 = FLA(s)
+                case(42) ;  scatteringAmplitude1 = FCE(s)
+                case(43) ;  scatteringAmplitude1 = FGD(s)
+                case(44) ;  scatteringAmplitude1 = FHF(s)    
+                case(45) ;  scatteringAmplitude1 = FTA(s)
+                case(46) ;  scatteringAmplitude1 = FW (s)
+                case(47) ;  scatteringAmplitude1 = FRE(s)
+                case(48) ;  scatteringAmplitude1 = FOS(s)
+                case(49) ;  scatteringAmplitude1 = FIR(s)
+                case(50) ;  scatteringAmplitude1 = FPT(s)
+                case(51) ;  scatteringAmplitude1 = FAU(s)
+                case(52) ;  scatteringAmplitude1 = FTL(s)
+                case(53) ;  scatteringAmplitude1 = FPB(s)
+                case(54) ;  scatteringAmplitude1 = FTH(s)    
                 case default
-                    print *,"Lib_inputReal::scatteringAmplitude1 error - did not recognise input element index ",i
+                    print *,"Lib_inputReal::scatteringAmplitude1 error - do not have scattering amplitude table for this element (element index ",i,")"
                     scatteringAmplitude1 = 0
             end select
 

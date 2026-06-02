@@ -39,7 +39,7 @@
         implicit none
         private
 
-                
+        !integer,public,parameter        ::      PROGRAM_STATE = int32        
         include "dashboard.h"
         
 
@@ -58,12 +58,15 @@
             module procedure setState0
             module procedure setState1
         end interface
+
         interface unsetState
             module procedure unsetState0
         end interface
+
         interface isState
             module procedure isState0
         end interface
+
         interface reportDashboard
             module procedure reportState0
         end interface   
@@ -127,31 +130,43 @@
             integer,intent(in),optional     ::      o
             integer     ::      uu,oo
             integer     ::      bit
-            
             uu = OUTPUT_UNIT ; if (present(u)) uu = u
             oo = 0 ; if (present(o)) oo = o 
             do bit = 0,NUMBER_FLAGS-1
+                if (.not. isHidden(bit)) &
                 write(unit=uu,fmt='(a)') repeat(" ",oo)//reportFlagbit( bit,screen=(uu==OUTPUT_UNIT) )
             end do 
             return
         end subroutine reportState0
 
+
+        pure logical function isHidden( bit )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            integer,intent(in)                          ::      bit
+            character(len=FLAG_NAME_LEN)                ::      name     
+            name = FLAG_NAME(bit+1)
+            isHidden = (name(1:8)=="(HIDDEN)")
+            return
+        end function isHidden
+
         pure function reportFlagbit( bit,screen ) result(text)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             integer,intent(in)                          ::      bit
             logical,intent(in)                          ::      screen
-            character(len=FLAG_NAME_LEN+1+5+9)          ::      text            
+            character(len=FLAG_NAME_LEN)                ::      name     
+            character(len=FLAG_NAME_LEN+1+5+9)          ::      text          
+            name = FLAG_NAME(bit+1)
             if (screen) then
                 if (btest(state,bit)) then
-                    text = FLAG_NAME(bit+1)//" "//colour("92","true")
+                    text = name//" "//colour("92","true")
                 else
-                    text = FLAG_NAME(bit+1)//" "//colour("31","false")
+                    text = name//" "//colour("31","false")
                 end if
             else
                 if (btest(state,bit)) then
-                    text = FLAG_NAME(bit+1)//" true"
+                    text = name//" true"
                 else
-                    text = FLAG_NAME(bit+1)//" false"
+                    text = name//" false"
                 end if
             end if
             return

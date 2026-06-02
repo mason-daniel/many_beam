@@ -48,6 +48,7 @@
         public      ::      getxyzoffset
         public      ::      getdelta
         public      ::      geta_super
+        public      ::      getia
         public      ::      getR
         public      ::      getL
         
@@ -111,6 +112,10 @@
             module procedure        geta_super0
         end interface
  
+        interface   getia
+            module procedure        getia0
+        end interface
+
         interface   getR
             module procedure        getR0
         end interface
@@ -472,8 +477,7 @@
             R = this%R
             return
         end function getR0
-
-
+ 
         pure subroutine seta_super0(this,a_super)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      sets the periodic supercell sides, and the normal to the foil before rotation
