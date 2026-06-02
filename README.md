@@ -44,7 +44,7 @@ The lattice parameter and lattice type will be set automatically by atom type. T
 The orientation of the atoms is an expensive calculation. If the atoms are not in the orientation such that the input file "x" direction is [100], and y = [010], z = [001], then this needs to be input.
 Use 
 ```
-    U = uxx,uyx,uzx,uxy,uyy,uzy,uxz,uyz,uzz
+    -U uxx,uyx,uzx,uxy,uyy,uzy,uxz,uyz,uzz
 ```
 To define the crystal lattice vector [uvw] to point in the space direction [xyz].
 ```
