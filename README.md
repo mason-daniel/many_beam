@@ -4,15 +4,27 @@
 
 hbtem-cp is a code to create simulated TEM images of large atomic simulations in the Howie-Basinski ( many beam ) approximation using a complex-phase representation of the distortion field.
 
-Expanding the Schrödinger equation to first order in spatial derivatives as a sum of beams with wavevectors $ \mathbf{k} + \mathbf{g} $, gives 
+Expanding the Schrödinger equation to first order in spatial derivatives as a sum of beams with wavevectors 
+$ \mathbf{k} + \mathbf{g} $,
+gives 
+
 $$
 \frac{( \mathbf{k} + \mathbf{g} )}{|\mathbf{k}|}  \cdot \nabla \phi_{\mathbf{g}}(\vec{r}) 
 =
 -i\, \sum_{\mathbf{g'}} \mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) \phi_{\mathbf{g'}}(\vec{r})
 $$
+
 where the propagation matrix is expressed as the sum of two parts:
-1. propagation through vacuum is handled by the deviation parameter $ s_{\mathbf{g}} $, and 
-2. propagation through the crystal requires an "on/off" density function $ \rho(\vec{r} \in [0,1] $\', a complex extinction distance $ \xi_{\mathbf{g}} $, and a complex phase factor representing the distortions in the lattice, $ x_{\mathbf{g}}(\vec{r}) = \exp[ -i \mathbf{g}.\mathbf{u}(\vec{r}) ] $.
+1. propagation through vacuum is handled by the deviation parameter 
+$ s_{\mathbf{g}} $,
+and 
+2. propagation through the crystal requires an "on/off" density function 
+$ \rho(\vec{r} \in [0,1] $, 
+a complex extinction distance 
+$ \xi_{\mathbf{g}} $, 
+and a complex phase factor representing the distortions in the lattice, 
+$ x_{\mathbf{g}}(\vec{r}) = \exp[ -i \mathbf{g}.\mathbf{u}(\vec{r}) ] $
+.
 
 $$
 \mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) 
