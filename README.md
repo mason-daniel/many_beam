@@ -5,7 +5,7 @@
 hbtem-cp is a code to create simulated TEM images of large atomic simulations in the Howie-Basinski ( many beam ) approximation using a complex-phase representation of the distortion field.
 
 Expanding the Schrödinger equation to first order in spatial derivatives as a sum of beams with wavevectors 
-$ \mathbf{k} + \mathbf{g} $,
+\mathbf{k} + \mathbf{g},
 gives 
 
 ```math
