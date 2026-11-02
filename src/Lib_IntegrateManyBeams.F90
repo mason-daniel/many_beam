@@ -227,7 +227,7 @@
 
 
 
-        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,M,nPrec,precAngle,rho_in,zlayers,dfg_bar ) result(this)
+        function IntegrateManyBeams_ctor1( latticename,a0_in,filename,T,V,M,nPrec,precAngle,rho_in,zlayers,select_grain,dfg_bar ) result(this)
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^               
     !*      default constructor. Intended to read the .xyz input file and determine basic parameters of the calculation.
     !*      Sets a default large number of g-vectors and no foil tilt.
@@ -247,6 +247,7 @@
             real(kind=real64),intent(in)                ::      precAngle               !   precession angle (rad)
             real(kind=real64),intent(in),optional       ::      rho_in                  !   radius of reflections to select
             integer,intent(in),optional                 ::      zlayers                 !   number of layers in rho calculation block (even)
+            integer,intent(in),optional                 ::      select_grain 
             real(kind=real64),dimension(3,3),intent(in),optional    ::      dfg_bar     !   mean deformation gradient, if input from command line parameters
             type(IntegrateManyBeams)                    ::      this
 
@@ -274,7 +275,9 @@
                 print *,"^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
             end if
             if (present(dfg_bar)) then
-                call readInputXyzFile( this,filename,xyz_offset,a_super,dfg_bar )                
+                call readInputXyzFile( this,filename,xyz_offset,a_super,dfg_bar=dfg_bar )                
+            else if (present(select_grain)) then
+                call readInputXyzFile( this,filename,xyz_offset,a_super,select_grain=select_grain )                
             else
                 call readInputXyzFile( this,filename,xyz_offset,a_super )                
             end if
@@ -293,8 +296,9 @@
                     if (rank==0) write(*,fmt='(a,3f12.5,a)') " Lib_IntegrateManyBeams::IntegrateManyBeams_ctor1 info - setting lattice parameter ",a0_in," from element name"
                 end if
             end if
-            this%a0 = a0_in(1)                      
-
+            this%a0 = a0_in(1) 
+            this%sigma = maxval(a0_in) / 2 
+            
         !---    set the default lattice type, if not already set
             if (latticename == UNKNOWN_LATTICE) then
                 latticename = getLatticeName(this%element)
@@ -504,15 +508,15 @@
                         modxi(nmodxi) = absxi
                         if (.not. isState(LOSSY)) then
                             if (isMillerBravais(this%gv)) then
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                                write(*,fmt='(4i4,5(a,f16.6))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
                             else                                
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
+                                write(*,fmt='(3i4,5(a,f16.6))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," ) ",real(this%xi(ii))
                             end if
                         else
                             if (isMillerBravais(this%gv)) then
-                                write(*,fmt='(4i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                                write(*,fmt='(4i4,5(a,f16.6))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
                             else
-                                write(*,fmt='(3i4,5(a,f16.8))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
+                                write(*,fmt='(3i4,5(a,f16.6))') hkl(:,ii)," (",real(Vg(ii))," +i",aimag(Vg(ii))," )  (",real(this%xi(ii))," +i",aimag(this%xi(ii)),")"
                             end if
                         end if
                     end if
@@ -573,6 +577,12 @@
             integer                     ::      mm,nG,kk
             real(kind=real64),dimension(:),allocatable      ::      Ig,Igm
  
+            kk = whichg(this%gv,hkl)
+            if (kk == LIB_GVECTORS_UNSET) then
+                if (rank==0) print *,"Lib_IntegrateManyBeams::perfectLatticeIntensity0 error- can't find g-vector ",hkl
+                call errorExit("Lib_IntegrateManyBeams g-vector not found")
+            end if
+
         !---    find the perfect lattice intensities
             LL = getThickness(this%as)
             if ( (rank==0).and.LIB_IMB_DBG ) print *,"Lib_IntegrateManyBeams::perfectLatticeIntensity0 info - foil thickness ",LL
@@ -580,14 +590,13 @@
             allocate(Ig(0:nG))
             allocate(Igm(0:nG))
             Ig = 0
+            if ( (rank==0).and.LIB_IMB_DBG ) print *,"Lib_IntegrateManyBeams::perfectLatticeIntensity0 info - computing ",nG," g-vectors and ",this%nPrec," precession angles"
             do mm = 1,this%nPrec
                 call perfectLatticeIntensity(this%mb(mm), LL, maxIntensity ,Igm)
                 Ig = Ig + Igm
             end do
             Ig = Ig / this%nPrec
              
-
-            kk = whichg(this%gv,hkl)
             I_g = Ig(kk)
 
             return
@@ -1016,23 +1025,24 @@
 
 
 
-        subroutine selectFoilTilt( this,hkl,theta_max,nTrial,bright, R )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine selectFoilTilt( this,hkl_bright,theta_max,nTrial, R, hkl_dark )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      select a good foil orientation so that reflection hkl is bright/dark
     !*      
             type(IntegrateManyBeams),intent(inout)  ::      this                !   needs to be inout because this%mb(1) is changed ( and changed back )
-            integer,dimension(:),intent(in)         ::      hkl                 !   reflection
+            integer,dimension(:),intent(in)         ::      hkl_bright          !   reflection
             real(kind=real64),intent(in)            ::      theta_max           !   max tilt angle (radians)
             integer,intent(in)                      ::      nTrial              !   number of tilts to try
-            logical,intent(in)                      ::      bright              !   if true, make [hkl] intensity high. Otherwise make low.
             real(kind=real64),dimension(3,3),intent(out)::      R
+            integer,dimension(:),intent(in),optional    ::      hkl_dark         !   reflection
 
 
             real(kind=real64),dimension(3,3,nTrial)     ::      RR
             real(kind=real64)                           ::      L_R             !   foil thickness after rotation
-            integer                                     ::      ii,nG,kk,bestRank
+            integer                                     ::      kk_bright,kk_dark
+            integer                                     ::      ii,nG,bestRank
             real(kind=real64),dimension(:),allocatable  ::      Ig_R            !   intensity
-            real(kind=real64)                           ::      qq,Ik_R 
+            real(kind=real64)                           ::      qq !,Ik_R 
 
             integer,dimension(:),allocatable            ::      besti,besti_tmp
             real(kind=real64),dimension(:),allocatable  ::      bestq,bestq_tmp
@@ -1043,13 +1053,29 @@
         !---    which reflection are we looking at? Do we have it in our set?
             nG = getn(this%gv)
             allocate(Ig_R(0:nG))
-            kk = whichg(this%gv,hkl)
-            if (kk == LIB_GVECTORS_UNSET) then
-                if (rank==0) print *,"Lib_IntegrateManyBeams::selectFoilTilt error - looking for reflection ",hkl
+            kk_bright = whichg(this%gv,hkl_bright)
+
+
+            if (kk_bright == LIB_GVECTORS_UNSET) then
+                if (rank==0) print *,"Lib_IntegrateManyBeams::selectFoilTilt error - looking for reflection ",hkl_bright
                 call errorExit("selectFoilTilt error - could not find desired reflection in set")
             end if
 
-            if (rank==0) print *,"Lib_IntegrateManyBeams::selectFoilTilt info - g = ",hkl," bright? ",bright," g-vector index ",kk
+            kk_dark = LIB_GVECTORS_UNSET
+            if (present(hkl_dark)) then
+                kk_dark = whichg(this%gv,hkl_dark)
+                if (kk_dark == LIB_GVECTORS_UNSET) then
+                    if (rank==0) print *,"Lib_IntegrateManyBeams::selectFoilTilt error - looking for reflection ",kk_dark
+                    call errorExit("selectFoilTilt error - could not find desired reflection in set")
+                end if
+            end if
+
+            if (rank==0) then
+                if (kk_dark /= LIB_GVECTORS_UNSET) &
+                print *,"Lib_IntegrateManyBeams::selectFoilTilt info - g = ",hkl_dark," g-vector index ",kk_dark
+                print *,"Lib_IntegrateManyBeams::selectFoilTilt info - g = ",hkl_bright," g-vector index ",kk_bright
+            end if
+
         !---    select the orientation of the foil tilts
             call fibonacci_cap(RR(:,3,:),theta_max)            
             
@@ -1072,20 +1098,25 @@
                 if (mod(ii,nProcs)/=rank) cycle
                 L_R = getThickness( this%as,RR(:,:,ii) )
                 call perfectLatticeIntensity( this%mb(1), L_R, RR(:,:,ii), maxIntensity , Ig_R )         !   compute fo
-                Ik_R = Ig_R(kk)
-                if (bright) then
-                    Ig_R(kk) = 0.0d0                
-                    qq = Ik_R - maxval(Ig_R(1:nG))              !   high if selected reflection is bright                    
-                    !print *,"Lib_IntegrateManyBeams::selectFoilTilt info - tilt ",ii," intensity ",Ik_R," max ",maxval(Ig_R(1:nG))," score ",qq
-                    !if (qq/=qq) stop
-                else
-                    qq = 1 - Ik_R                               !   high if selected reflection is dark
-                end if
+                qq = quality( Ig_R,kk_bright,kk_dark )
+                ! Ik_R = Ig_R(kk_bright)
+                ! if (bright) then
+                !     Ig_R(kk_bright) = 0.0d0                
+                !     qq = Ik_R - maxval(Ig_R(1:nG))              !   high if selected reflection is bright                    
+                ! else
+                !     qq = 1 - Ik_R                               !   high if selected reflection is dark
+                ! end if
                 if (qq > bestq(rank)) then
                     bestq(rank) = qq
                     besti(rank) = ii                    
                 end if
-                !write(*,fmt='(a,i6,100f12.6)') "selectFoilTilt ",ii,qq,RR(:,:,ii),Ik_R
+                if ( (rank==0) .and. LIB_IMB_DBG) then
+                    if (kk_dark == LIB_GVECTORS_UNSET) then
+                        write(*,fmt='(a,i6,100f12.6)') "selectFoilTilt ",ii,qq,Ig_R(kk_bright),Ig_R(kk_dark)
+                    else
+                        write(*,fmt='(a,i6,100f12.6)') "selectFoilTilt ",ii,qq,Ig_R(kk_bright)
+                    end if
+                end if
             end do
 
 #ifdef MPI
@@ -1116,26 +1147,61 @@
             L_R = getThickness( this%as,R )                 !   returns new thickness, assuming that a virtual tilt is applied
             !if (rank==0) print *,R,L_R
             call perfectLatticeIntensity( this%mb(1), L_R, R, maxIntensity, Ig_R )
-            Ik_R = Ig_R(kk)
-            if (bright) then                
-                Ig_R(kk) = 0.0d0                
-                qq = Ik_R - maxval(Ig_R(1:nG))              !   high if selected reflection is bright                    
-            else
-                qq = 1 - Ik_R                               !   high if selected reflection is dark
-            end if
+            ! Ik_R = Ig_R(kk_bright)
+            ! if (bright) then                
+            !     Ig_R(kk_bright) = 0.0d0                
+            !     qq = Ik_R - maxval(Ig_R(1:nG))              !   high if selected reflection is bright                    
+            ! else
+            !     qq = 1 - Ik_R                               !   high if selected reflection is dark
+            ! end if
+            qq = quality( Ig_R,kk_bright,kk_dark )
 
         !---    return best solution
             if (rank==0) then
+                if (LIB_IMB_DBG) print *,"select foil tilt ",ii
                 write(*,fmt='(a,9f10.6,2(a,f10.6))') " foil tilt "
                 write(*,fmt='(3f20.12)')  R(1,:)
                 write(*,fmt='(3f20.12)')  R(2,:)
                 write(*,fmt='(3f20.12)')  R(3,:)
-                write(*,fmt='(2(a,f10.6))') " quality ",qq," I_g ",Ik_R
+                if (kk_dark == LIB_GVECTORS_UNSET) then
+                    write(*,fmt='(2(a,f10.6))') " quality ",qq," I_g bright ",Ig_R(kk_bright)
+                else
+                    write(*,fmt='(2(a,f10.6))') " quality ",qq," I_g bright ",Ig_R(kk_bright)
+                    write(*,fmt='(a,a10,a,f10.6)')   " quality ",""," I_g dark   ",Ig_R(kk_dark)
+                end if
             end if
             !R = RR(:,:,ii)
 
-
             return
+
+        contains
+    !---^^^^^^^^
+
+            pure real(kind=real64) function quality( Ig_R,kk_bright,kk_dark )
+        !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        !*      a figure of merit for the diffraction pattern
+        !*      given intensity of each beam Ig_R, and index of beam to be bright and dark
+                real(kind=real64),dimension(0:),intent(in)  ::      Ig_R                    !   intensity
+                integer,intent(in)                          ::      kk_bright,kk_dark       !   index of beam I want bright/dark
+
+                real(kind=real64)       ::      Ig_bright,Ig_dark,Ig_next_brightest
+                integer                 ::      kk
+
+            !---    find intensity of bright spot,darkest spot, and next-brightest spot
+                Ig_bright = Ig_R( kk_bright )
+                Ig_dark = 0.0d0 ; if (kk_dark /= LIB_GVECTORS_UNSET) Ig_dark = Ig_R( kk_dark )
+                Ig_next_brightest = 0.0d0
+                do kk = 1,ubound(Ig_R,dim=1)
+                    if (kk == kk_bright ) cycle
+                    Ig_next_brightest = max( Ig_next_brightest,Ig_R(kk) )
+                end do
+
+                quality = Ig_bright - Ig_next_brightest
+                !quality = quality * (1-Ig_dark)**2
+
+                return
+            end function quality
+
         end subroutine selectFoilTilt
 
 
@@ -1330,6 +1396,8 @@
             nn = 0
             if (present(rho_in)) then
             !---    find all reflections within certain radius
+
+                if ((rank==0).and.LIB_IMB_DBG) call listPermittedReflections( this%latt,rho_in )
                 call permittedReflections( this%latt,hkl,rho_in )    
                 nn = ubound(hkl,dim=2)        
                 if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - n permitted reflections ",nn 
@@ -1369,6 +1437,7 @@
             do ii = 1,nn                
                 gg = getg( a_conventional_cell,hkl(:,ii) )
                 keep(ii) = keepGvector( this,gg,rule )
+                if ((rank==0).and.LIB_IMB_DBG) print *,"Lib_IntegrateManyBeams::setGvectors - hkl ",hkl(:,ii)," g = ",gg," keep ",keep(ii)
             end do
             jj = 0
             do ii = 1,nn
@@ -1399,7 +1468,7 @@
                 if (done) exit
             end do
         !---    now permitted reflection 1 should be [000]
-            if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - reflection 0 = ",hkl(:,0)
+            !if (rank==0) print *,"Lib_IntegrateManyBeams::setGvectors - reflection 0 = ",hkl(:,0)
          
     !---    construct a g-vector object            
             if (getLatticeType(this%latt) == LATTICE_HCP) then
@@ -1493,8 +1562,8 @@
  
 
 
-        subroutine readInputXyzFile( this,filename,xyz_offset,a_super,dfg_bar )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        subroutine readInputXyzFile( this,filename,xyz_offset,a_super,select_grain,dfg_bar )
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      reads in the atom positions ( shared by all processes )
     !*      computes the average deformation gradient dfg_bar if possible and not provided
     !*      sets the most populous element name (this%element)
@@ -1504,6 +1573,7 @@
             character(len=*),intent(in)                         ::      filename
             real(kind=real64),dimension(3),intent(out)          ::      xyz_offset  !   atom position offset read from file
             real(kind=real64),dimension(3,3),intent(out)        ::      a_super
+            integer,intent(in),optional                         ::      select_grain 
             real(kind=real64),dimension(3,3),intent(in),optional    ::      dfg_bar
             
 
@@ -1563,8 +1633,13 @@
                             print *,"    grain ",kk," count ",nGrain(kk)
                         end do
         
-                        kk = maxloc(nGrain,dim=1) - 1
-                        print *,"Lib_IntegrateManyBeams::readInputXyzFile info - using average deformation gradient for most populous grain ",kk," frac ", nGrain(kk)*100.0/this%nAtoms," %"
+                        if (present(select_grain)) then
+                            kk = select_grain
+                            print *,"Lib_IntegrateManyBeams::readInputXyzFile info - using average deformation gradient for grain ",kk," frac ", nGrain(kk)*100.0/this%nAtoms," %"
+                        else
+                            kk = maxloc(nGrain,dim=1) - 1
+                            print *,"Lib_IntegrateManyBeams::readInputXyzFile info - using average deformation gradient for most populous grain ",kk," frac ", nGrain(kk)*100.0/this%nAtoms," %"
+                        end if
                         deallocate(nGrain)
                                     
                         call computeAvgDefGrad(eps_bar,this%dfg_bar,weight)
@@ -1936,7 +2011,8 @@
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     !*      returns width of blurring used to construct phase fields
             type(IntegrateManyBeams),intent(in)           ::      this            
-            getSigma0 = this%a0/2
+            !getSigma0 = this%a0/2
+            getSigma0 = this%sigma
             return
         end function getSigma0
 

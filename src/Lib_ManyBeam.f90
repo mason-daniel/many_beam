@@ -13,6 +13,7 @@
 !*          y_g = Im( x_g* ( (k+g)/|k| ) . grad x_g )
 !*      
 !*
+!*        
 !*      Daniel Mason
 !*      (c) UKAEA Sept 2024
 !*
@@ -288,7 +289,8 @@
 
     
         subroutine setPhaseFactors0( this,lbz,ubz, grad_arg_x,rho )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      used with gauge transform
     !*      link pointers to the atomistic information, phase field and atomic density
             type(ManyBeam),intent(inout)                                    ::      this
             integer,intent(in)                                              ::      lbz,ubz             !   definning the z-slices stored
@@ -305,7 +307,8 @@
         end subroutine setPhaseFactors0
 
         subroutine setPhaseFactors1( this,lbz,ubz, x,rho )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      used without gauge transform
     !*      link pointers to the atomistic information, phase field and atomic density
             type(ManyBeam),intent(inout)                                    ::      this
             integer,intent(in)                                              ::      lbz,ubz             !   definning the z-slices stored
@@ -451,10 +454,11 @@
         !       compute the transform matrix for the perfect crystal
 
             if (present(Sg)) then            
+                !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - Sg ",minval(Sg),":",maxval(Sg),", maxIntensity mode? ",maxIntensity
                 call propagationMatrix( this, MM, Sg=Sg )                    
-                !print *,"Sg ",minval(Sg),":",maxval(Sg)
 
             else
+                !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - Sg ",minval(this%Sg),":",maxval(this%Sg),", maxIntensity mode? ",maxIntensity                
                 call propagationMatrix( this, MM )    
             end if
 
@@ -467,14 +471,18 @@
                         MM(:,ii) = 0.0d0
                     end if
                 end do
+                !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - Sg_max ",Sg_max," retain ",count(abs(Sg(1:this%nG))<=Sg_max),"/",this%nG
             else
                 do ii = 1,this%nG           
                     if (abs(this%Sg(ii))>Sg_max) then
                         MM(ii,:) = 0.0d0
                         MM(:,ii) = 0.0d0
+                        !print *,"cut g-vec ",ii," S_g = ",this%Sg(ii), " g = ",getg(this%gv,ii)," hkl = ",gethkl(this%gv,ii)
                     end if
                 end do
+                !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - Sg_max ",Sg_max," retain ",count(abs(this%Sg(1:this%nG))<=Sg_max),"/",this%nG
             end if
+            
 
     
         !---    now propagate through a crystal of thickness L 
@@ -484,14 +492,17 @@
             nz = 2*ceiling( (L / (this%a/2))/2 )                    !   I will use half the standard voxel spacing, to ensure robust accuracy (it's very quick)
             deltaz = 2*L/nz                                         !   deltaz according to RK4 is two voxel spacings
             integrator = rk4_ctor( (this%nG+1) , deltaz )    
-            !print *,"perfectLatticeIntensity0 L,a,nz, deltaz ",L,this%a,nz, deltaz
+            !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - L,a,nz, deltaz ",L,this%a,nz, deltaz
             call getphip_dphip(integrator , phip,dphip)             !   rk4 handles its own memory. So get pointers to it.
             phip = 0.0d0 ; phip(1) = 1.0d0                          !   set all energy for boundary condition into g=0 beam.            
             
 
             Ig_max = 0.0d0 ; Ig_max(0) = 1.0d0                      !   record maximum intensities as we progress through the block
 
-            !print *,"this%kplusgonk ",minval(this%kplusgonk(3,:)),":",maxval(this%kplusgonk(3,:))
+            !if (LIB_MANYBEAM_DBG) print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - this%kplusgonk ",minval(this%kplusgonk(3,:)),":",maxval(this%kplusgonk(3,:))
+
+            !print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - M ",minval(abs(MM)),":",maxval(abs(MM))
+
 
 
             do ii = 0,nz-2,2
@@ -506,6 +517,8 @@
 
                     call update(integrator,step,dz)                             !   updates the value of phip for me
 
+                    ! print *,"Lib_ManyBeam::perfectLatticeIntensity0 info - phip ",ii," ",minval(abs(phip)),":",maxval(abs(phip))
+
                 end do
 
             !---    find the intensities after each RK4 cycle
@@ -514,7 +527,6 @@
                         phi = phip(jj+1)    
                         Ig_max(jj) = max( Ig_max(jj) , real(phi)*real(phi) + aimag(phi)*aimag(phi) )        !   find absolute magnitude of intensity at this layer.
                     end do
-                    !print *,"slice ",ii,Ig_max(:)
                 end if
 
             end do
@@ -528,7 +540,7 @@
                     Ig(jj) = real(phi)*real(phi) + aimag(phi)*aimag(phi)            !   find absolute magnitude of intensity at this layer.
                 end do
             end if
- 
+            
             call delete(integrator)
 
             return
@@ -606,44 +618,17 @@
         end subroutine perfectLatticeIntensity0
   
 
-
-    !     subroutine perfectLatticeEigendecomp( this, lambda_g, Psi , Sg )
-    ! !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ! !*      construct the perfect lattice propagation matrix  M_c
-    ! !*      and then perform the eigendecomposition  M_c = Psi Lambda Psi^T
-    ! !*      return the eigenvalues lambda_g and the eigenvectors 
-
-    !         type(ManyBeam),intent(in)                               ::      this
-    !         real(kind=real64),dimension(0:),intent(out)             ::      lambda_g
-    !         real(kind=real64),dimension(0:,0:),intent(out)          ::      Psi
-    !         real(kind=real64),dimension(0:),intent(in)              ::      Sg
-          
-    !         complex(kind=real64),dimension(0:this%nG,0:this%nG)     ::      MM
-    !         complex(kind=real64),dimension( 66*(1+this%nG) )        ::      work
-          
-    !         integer                                                 ::      ii           
  
-    !         MM = propagationMatrix(this,Sg=Sg)
-    !         Psi = real(MM)
-
-    !     !---    find eigenvalues and eigenvectors
-    !         call DSYEV( "V","U",(1+this%nG),Psi,(1+this%nG),lambda_g,work,size(work),ii )
-
-    !         do ii = 0,this%nG
-    !             lambda_g(ii) = lambda_g(ii) / this%kplusgonk(3,ii)
-    !         end do
-
-    !         return
-    !     end subroutine perfectLatticeEigendecomp
-
-
 
         pure subroutine propagationMatrix0( this, M, rho, grad_arg_x, Sg ) 
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      used with gauge transform
     !*      (k+g)/|k| . grad Phi = -i M Phi 
     !*      compute the matrix M at position r
     !*      where
     !*          M = -2 pi s_g + pi rho iXi + Y
+    !*      update: 23/10/26
+    !*          M = -pi s_g + ( pi rho iXi + Y )/2
     !*      s_g is diagonal matrix holding deviation parameters
     !*      rho is atom density scaled to 1 in crystal and 0 in vacuum
     !*      iXi is matrix of inverse (complex) extinction distances
@@ -709,20 +694,21 @@
                 end do
             end if
 
+         
+
             return
         end subroutine propagationMatrix0
 
         pure subroutine propagationMatrix1( this, M, rho, x ) 
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      used without gauge transform
     !*      (k+g)/|k| . grad Phi = -i M Phi 
     !*      compute the matrix M at position r
     !*      where
-    !*          M = -2 pi s_g + pi rho iXi + Y
+    !*          M = -2 pi s_g + pi rho iXi x
     !*      s_g is diagonal matrix holding deviation parameters
     !*      rho is atom density scaled to 1 in crystal and 0 in vacuum
     !*      iXi is matrix of inverse (complex) extinction distances
-    !*      Y is a diagonal matrix containing the strain contribution
-    !*          y_g = Im( x_g* ( (k+g)/|k| ) . grad x_g )
             type(ManyBeam),intent(in)                               ::      this
             complex(kind=real64),dimension(0:,0:),intent(out)       ::      M                  
             real(kind=real32),intent(in)                            ::      rho
@@ -746,8 +732,8 @@
             do ii = 1,this%nG               
                 M(ii,ii) = M(ii,ii) - 2 * PI * this%Sg(ii)            
             end do
-        
- 
+         
+
 
 
             return

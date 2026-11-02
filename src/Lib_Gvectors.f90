@@ -526,10 +526,17 @@
             type(Gvectors),intent(in)                       ::      this    
             integer,dimension(:),intent(in)                 ::      hkl
             integer             ::      ii
+            integer,dimension(3)        ::      hhkkll
             whichg1 = LIB_GVECTORS_UNSET
             if (this%MillerBravais) then
+                if (size(hkl)==4) then
+                    hhkkll = MillerBravaisToMiller_plane( hkl(1:4) )
+                else
+                    hhkkll = hkl
+                end if
+
                 do ii = 1,this%n
-                    if (all( hkl(1:4) == this%hkl(1:4,ii) )) then
+                    if (all( hhkkll(1:3) == this%hkl(1:3,ii) )) then
                         whichg1 = ii
                         return
                     end if
@@ -542,6 +549,10 @@
                     end if
                 end do
             end if
+            !print *,"whichg1 ",this%MillerBravais,hkl,this%n
+            !do ii = 1,this%n
+            !    print *,"whichg1 ",ii," ",this%hkl(:,ii) 
+            !end do
             return
         end function whichg1
 

@@ -65,6 +65,7 @@
 
         subroutine computePhaseFactor0( mynAtoms, rt,g, img, delta,lbz,ubz,border, x,rho )
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      Used without gauge transform
     !*      compute a smoothed approximation x ~ exp( - i g.u )  
     !*      and at the same time a density estimation rho(r) and grad x
     !*      I compute a correctly weighted but unnormalised x~ for each atom j
@@ -78,12 +79,7 @@
     !*                      sum_k exp( -s (Rj-rk)² )   
     !*
     !*      The value required by the calculation is x* (k+g)/|k| ∇x
-    !*      Now it could be that we are doing a precession or tomography calc, so there may be multiple (k+g)/|k|
-    !*      but I still can store and reuse x* ∇x
-    !*      Since x = exp( - ig.p )                 where p ~ u(r) is a multivalued displacement field
-    !*          ∇x  = ∇( - ig.p ) x = i x ∇ arg(x) 
-    !*        x* ∇x = i ∇ arg(x) 
-    !*      So compute the complex field x, but return the _real_ field ∇ arg(x) = Im( x* ∇ x )
+     
 
             integer,intent(in)                                          ::      mynAtoms
             real(kind=real32),dimension(:,:),intent(in)                 ::      rt      !   (1:3,1:myNatoms) atom positions, scaled to rt = R (r-delta)/a. Typically in range  lbound(x):ubound(x)
@@ -287,7 +283,8 @@
 
 
         subroutine computePhaseFactor1( mynAtoms, rt,g, img, delta,lbz,ubz,border, grad_arg_x,rho )
-    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    !*      use with gauge transform
     !*      compute a smoothed approximation x ~ exp( - i g.u )  
     !*      and at the same time a density estimation rho(r) and grad x
     !*      I compute a correctly weighted but unnormalised x~ for each atom j

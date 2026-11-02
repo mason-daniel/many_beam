@@ -57,6 +57,7 @@
         integer,private                     ::      rank = 0
         integer,private                     ::      nProcs = 1         
         integer,public                      ::      Lib_ImagingSpace_SIGMA_MULT = 3
+        logical,public                      ::      Lib_ImagingSpace_DBG = .false.
 
         integer,private,parameter           ::      N  = 1
         integer,private,parameter           ::      NE = 2
@@ -239,13 +240,15 @@
             Cx = ceiling(real(this%Nx)/this%Mx)
             Cy = ceiling(real(this%Ny)/this%My)
 
-            do pp = 0,nProcs-1
-                iy = pp/this%Mx
-                ix = pp - this%Mx*iy
-                write (*,fmt='(10(a,i4))') repeat(" ",oo+4)//"proc ",pp,                        &
-                                " x ",ix*Cx,":",min( this%Nx-1,ix*Cx + Cx - 1 ),                &
-                                " y ",iy*Cy,":",min( this%Ny-1,iy*Cy + Cy - 1 )                  
-            end do            
+            if (Lib_ImagingSpace_DBG) then
+                do pp = 0,nProcs-1
+                    iy = pp/this%Mx
+                    ix = pp - this%Mx*iy
+                    write (*,fmt='(10(a,i4))') repeat(" ",oo+4)//"proc ",pp,                        &
+                                    " x ",ix*Cx,":",min( this%Nx-1,ix*Cx + Cx - 1 ),                &
+                                    " y ",iy*Cy,":",min( this%Ny-1,iy*Cy + Cy - 1 )                  
+                end do            
+            end if
             return
         end subroutine report0
 
@@ -348,7 +351,7 @@
                     this%ix = ix
                     this%iy = iy                  
                 end if
-                if (rank == 0) then
+                if (Lib_ImagingSpace_DBG.and.(rank == 0)) then
                     write (*,fmt='(10(a,i4))') " Lib_ImagingSpace::setMyBounds info - proc ",pp,    &
                                 " x ",ix*Cx,":",min( this%Nx-1,ix*Cx + Cx - 1 ),                 &
                                 " y ",iy*Cy,":",min( this%Ny-1,iy*Cy + Cy - 1 )                 
@@ -419,7 +422,7 @@
             if ( (this%neigh(SE) == this%neigh(S)).or.(this%neigh(SE) == this%neigh(E)) ) this%neigh(SE) = rank
             if ( (this%neigh(SW) == this%neigh(S)).or.(this%neigh(SW) == this%neigh(W)) ) this%neigh(SW) = rank
 
-
+            if (Lib_ImagingSpace_DBG.and.(rank == 0)) &
             write(*,fmt='(a,i6,a,8i6)') "Lib_ImagingSpace::setMyNeighbours rank ",rank," neighbours ",this%neigh
 
             ! print *,"setMyNeighbours ",rank,this%neigh

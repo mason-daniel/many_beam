@@ -6,6 +6,8 @@
 mkdir build ; cd build
 
 cmake ../. -DCMAKE_Fortran_COMPILER=mpiifort -DCMAKE_C_COMPILER=mpiicc -DCMAKE_BUILD_TYPE= -DCMAKE_SERIAL=False
+
+make 
 ```
 
 ## first run

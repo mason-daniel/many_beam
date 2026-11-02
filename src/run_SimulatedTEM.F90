@@ -14,7 +14,7 @@
 !*          v.0.0.4         Mar 26      Option to output image from all diffracted beams
 !*          v.0.0.5         Apr 26      Option to find centre-of-mass in diffraction pattern
 !*          v.0.1.0         May 26      thanks to Aslak Fellman (Helsinki) spotted bug in handling of unknown element type. Change to default op filename for .xyz files. dump .xyz file in tilted position ( serial run only )
-
+!*          v.0.1.1         Oct 26      tweaks to output of diffraction patterns
 
 
        
@@ -41,7 +41,7 @@
         implicit none
 
 
-        character(len=8),parameter          ::      VERSION = "0.1.0"
+        character(len=8),parameter          ::      VERSION = "0.1.1"
 
 
         real(kind=real64),parameter         ::      PI = 3.14159265390d0
@@ -76,7 +76,7 @@
         logical                             ::      com_beams = .false.     !   construct image from centre of mass of beams
         real(kind=real64)                   ::      tilt_max = 5.0          !   maximum stage tilt (deg)
         integer                             ::      ntilt = 1000            !   number of tilt angles searched for good diffraction pattern
-        real(kind=real64)                   ::      tweak = 0.001d0         !   tweak in tilt angle permitted to optimise diffraction pattern
+        real(kind=real64)                   ::      tweak = 0.01d0          !   tweak in tilt angle permitted to optimise diffraction pattern
         real(kind=real64)                   ::      imin = 0.001d0          !   intensity threshold for "important" beam
         integer                             ::      zlayers = 50            !   number of z layers to compute rho & x* grad x
         logical                             ::      dbg = .false.   
@@ -84,6 +84,7 @@
         real(kind=real64),dimension(9)      ::      Umat = (/ 1,0,0,0,1,0,0,0,1 /)
         logical                             ::      specifiedRmat = .false.
         logical                             ::      specifiedUmat = .false.
+        integer                             ::      select_grain = LIB_CLA_NODEFAULT_I
         logical                             ::      tiltonly = .false.      !   option to quit after finding goo tilt angle
 
     !---    physical variables
@@ -191,6 +192,7 @@
         call get( cla,"tweak",tweak,LIB_CLA_OPTIONAL,"      fine-tune tweak angle as fraction of theta",CLA_MICRO )           
         ii=9; call get( cla,"R",Rmat,ii,LIB_CLA_OPTIONAL,"          specify tilt matrix",CLA_MICRO )           
         ii=9; call get( cla,"U",Umat,ii,LIB_CLA_OPTIONAL,"          specify crystal orientation in input file - if x axis is [uvw] then U=ux,uy,uz,vx...wz",CLA_MICRO )           
+        call get( cla,"grain",select_grain,LIB_CLA_OPTIONAL,"      assuming column 4 of .xyz is grain number, 5:13 are deformation gradient, choose orientation of one grain",CLA_MICRO )           
 
 
         ii=0; dat = LIB_CLA_NODEFAULT_I; call get( cla,"g",dat,ii ,LIB_CLA_REQUIRED,"            g-vector reflection to output",CLA_DIFF )
@@ -238,7 +240,7 @@
         call get( cla,"gauge",attset ,LIB_CLA_OPTIONAL,"      use gauge transformation (deprecated)",CLA_CALC )                 
         if (hasArgument(cla,"gauge")) call setState(GAUGETRANSFORM,attset)
 
-        call get( cla,"tilt",tiltonly ,LIB_CLA_OPTIONAL,"     tilt foil then end - no image generated",CLA_CALC )                 
+        call get( cla,"tilt",tiltonly ,LIB_CLA_OPTIONAL,"       tilt foil then end - no image generated",CLA_CALC )                 
         
  
         attset = isState(OPXYZPLUS)
@@ -402,6 +404,9 @@
                 write(*,fmt='(a,3f12.8)') "          ",Umat(2:8:3)
                 write(*,fmt='(a,3f12.8)') "          ",Umat(3:9:3)
             !end if
+            if (select_grain/=LIB_CLA_NODEFAULT_I) &
+                print *,"       select grain orientation ",select_grain
+
             print *,""
 
             print *,"   microscope settings"
@@ -475,6 +480,7 @@
             LIB_IMB_DBG = dbg
             Lib_ComputePhaseFactor_DBG = dbg
             LIB_MANYBEAM_DBG = dbg
+            Lib_ImagingSpace_DBG = dbg
         end if
 
         call Lib_IntegrateManyBeams_init_MPI()
@@ -485,6 +491,8 @@
         !tt(T_CTOR) = Callipers_ctor()
         if (specifiedUmat) then
             imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,M, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers, dfg_bar = reshape( Umat,(/3,3/))  )
+        else if (select_grain/=LIB_CLA_NODEFAULT_I) then
+            imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,M, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers, select_grain = select_grain )
         else
             imb = IntegrateManyBeams_ctor( latticename,a0_in,filename,T,V,M, nPrec = nPrec, precAngle = precAngle, rho_in = max(4.0d0,norm2(n_g*hkl)+4), zlayers = zlayers )
         end if
@@ -734,6 +742,12 @@
         end if
         
         else
+
+            if (isState(OPDIFF)) then
+                call start(tt(T_OUTPUT))
+                call outputDiffractionPattern( imb,trim(outfile)//"_after",1024,maxIntensity=.false.,yflip=yflip )
+                call pause(tt(T_OUTPUT))
+            end if            
             if (rank==0) print *,"run_SimulatedTEM info - compute tilt then quit"
         end if      !   tiltonly
 
@@ -750,7 +764,7 @@
             print *,"^^^^^^^^^^^^^^^"
             write(*,fmt='(a,f16.6)') "   initialisation ",elapsed(tt(T_INIT))
             write(*,fmt='(a,f16.6)') "   tilt foil      ",elapsed(tt(T_TILT))
-            write(*,fmt='(a,f16.6)') "   integration    ",elapsed(tt(T_INTEGRATE))
+            if (.not. tiltonly) write(*,fmt='(a,f16.6)') "   integration    ",elapsed(tt(T_INTEGRATE))
             write(*,fmt='(a,f16.6)') "   output         ",elapsed(tt(T_OUTPUT))
             write(*,fmt='(a,f16.6)') "   total          ",elapsed(tt(T_TOTAL))
         end if
@@ -825,7 +839,8 @@
         subroutine tiltFoil(imb,tilt_max,hkl,n_g,dark)        
     !---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^     
     !*      find a good tilt angle 0:tilt_max (radians) so that the reflection
-    !*      ng [hkl] is bright. Optionally then tweak until the reflection [hkl] is dark
+    !*      ng*[hkl] is bright. 
+    !*      Optionally also tweak until 1*[hkl] is dark
 
             type(IntegrateManyBeams),intent(inout)              ::      imb
             real(kind=real64),intent(in)                        ::      tilt_max
@@ -835,7 +850,7 @@
             real(kind=real64),dimension(3,3)    ::      foil_tilt
 
             logical                             ::      MillerBravais 
-            integer,dimension(size(hkl))        ::      hkl_bright
+            integer,dimension(size(hkl))        ::      hkl_bright,hkl_dark
             real(kind=real64)                   ::      I_g
             real(kind=real64),dimension(3,3)    ::      foil_tilt2
             character(len=16)                   ::      form
@@ -844,7 +859,10 @@
             integer                             ::      ii,jj
 
 
-            if ( dark.and.(rank==0) ) print *,"tiltFoil info - ""dark"" option not currently used in tiltFoil"
+            !if ( dark.and.(rank==0) ) print *,"tiltFoil info - ""dark"" option not currently used in tiltFoil"
+            if ( dark.and.(rank==0) ) print *,"tiltFoil info - ""dark"" option used"
+            hkl_dark = 0
+            if (dark) hkl_dark = hkl
 
             MillerBravais = (size(hkl)==4)
             form = "(a,3i4,a,f16.8)"
@@ -881,21 +899,36 @@
                     if (abs(n_g - nint(n_g)) < 1.0d-6) then
                         if (rank==0) then
                             print *,""
+                            if (dark) write(*,fmt=form) " selecting dark reflection g,n_g = ",hkl,",",1.0d0
                             write(*,fmt=form) " selecting bright reflection g,n_g = ",hkl,",",n_g
                             print *,""
                         end if
                         hkl_bright = nint( n_g ) * hkl
-                        call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt )
+                        ! if (dark) then
+                        !     call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt, hkl_dark )
+                        ! else
+                            call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt )
+                        !end if
                     else
                         if (rank==0) then
                             print *,""
+                            if (dark) write(*,fmt=form) " selecting dark reflection g,n_g = ",hkl,",",1.0d0
                             write(*,fmt=form) " selecting bright reflections for g,n_g = ",hkl,",",n_g
                             print *,""
                         end if
                         hkl_bright = floor( n_g ) * hkl
-                        call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt )
+                        ! if (dark) then
+                        !     call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt, hkl_dark )
+                        ! else
+                            call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt )
+                        !end if
                         hkl_bright = ceiling( n_g ) * hkl
-                        call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT,.true., foil_tilt2 )
+                        ! if (dark) then
+                        !     call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt2, hkl_dark )
+                        ! else
+                            call selectFoilTilt( imb,hkl_bright,tilt_max,NTILT, foil_tilt2 )
+                        !end if
+                        
                         foil_tilt = quaternionToRotMat( slerp( Quaternion_ctor(foil_tilt),Quaternion_ctor(foil_tilt2), ceiling(n_g) - n_g ) )       !   ceiling(x)-x = 1 for x = 3.00 and = 0 for 3.99
 
                         ! if (n_g - floor(n_g) < 0.5) then
@@ -918,15 +951,26 @@
                     end if
             !    end if
                 
-                ! if (dark) then
+                 if (dark) then
                 ! !   add an additional tweak to make hkl extra dark
-                !     call selectFoilTilt( imb,hkl,tilt_max*TWEAK,NTILT,.false., foil_tilt )
-                !     call applyFoilTilt(imb,foil_tilt)
-                !     if (rank==0) then
-                !         call perfectLatticeIntensity(imb,hkl,maxIntensity,I_g)
-                !         write(*,fmt=form)  " tiltFoil info - perfect lattice intensity ",hkl," after tilt to dark field ",I_g
-                !     end if
-                ! end if
+                        if (dark) then
+                            call selectFoilTilt( imb,hkl_bright,tilt_max*TWEAK,NTILT, foil_tilt2, hkl_dark )
+                        else
+                            call selectFoilTilt( imb,hkl_bright,tilt_max*TWEAK,NTILT, foil_tilt2 )
+                        end if
+
+!                     call selectFoilTilt( imb,hkl,tilt_max*TWEAK,NTILT,.false., foil_tilt )
+                     call applyFoilTilt(imb,foil_tilt2)
+                     foil_tilt = matmul(foil_tilt,foil_tilt2)
+                     if (rank==0) then
+                         call perfectLatticeIntensity(imb,hkl_bright,maxIntensity,I_g)
+                         write(*,fmt=form)  " tiltFoil info - perfect lattice intensity ",hkl_bright," after tweak  ",I_g
+                         if (dark) then
+                            call perfectLatticeIntensity(imb,hkl_dark,maxIntensity,I_g)
+                            write(*,fmt=form)  " tiltFoil info - perfect lattice intensity ",hkl_dark," after tweak  ",I_g
+                         end if
+                     end if
+                end if
 
             end if                
 
@@ -1054,11 +1098,12 @@
             integer                         ::      ix,iy,ii
             integer                         ::      nG
             real(kind=real64),dimension(:,:),allocatable        ::      gg
-            real(kind=real64)               ::      modg
-            real(kind=real64)               ::      spotRadius,ss
+            real(kind=real64)               ::      maxg,ming
+            real(kind=real64)               ::      spotRadius,ss,I_0,I_x,dd
             real(kind=real64),dimension(2)  ::      dx
             real(kind=real64),dimension(:),allocatable          ::      I_g
-            real(kind=real64),parameter     ::      MIN_GREYSCALE = 1.0d0/(256*256*256)
+            real(kind=real64),parameter     ::      MIN_GREYSCALE = 1.0d0/(256*256)
+            logical                         ::      hide_000
 
         !---    get the g vectors
             gv = getGvectors(imb)
@@ -1078,10 +1123,14 @@
             end if
 
 
-        !---    find the largest magnitude g-vector
-            modg = -huge(1.0)
+        !---    find the smallest/largest magnitude g-vector
+            maxg = -huge(1.0)
             do ii = lbound(gg,dim=2),nG
-                modg = max(modg,norm2(gg(:,ii)))
+                maxg = max(maxg,norm2(gg(:,ii)))
+            end do
+            ming = +huge(1.0)
+            do ii = 1,nG
+                ming = min(ming,norm2(gg(:,ii)))
             end do
 
 
@@ -1095,10 +1144,30 @@
             end if
 
         !---    find a decent scaling of the image
-            spotRadius = Nx * sqrt(0.1d0/(nG*PI))
-            ss = ( Nx/2 - 2*spotRadius )/modg
-            spotRadius = min( spotRadius , modg*ss/4 )
+        !    spotRadius = Nx * sqrt(0.1d0/(nG*PI))            
+        !    ss = ( Nx/2 - 2*spotRadius )/maxg
+        !    spotRadius = min( spotRadius , maxg*ss/4 )
+
+            ss = (Nx/2) / ( maxg + ming/2 )     !   scale such that 1/2 pixel width will contain maxg + 2x radius of spot
+            spotRadius = ss* ming/4                 !   want closest spot separation = 2x radius
+
+
+            if (rank==0 .and. dbg) print *,"run_SimulatedTEM::outputDiffractionPattern info - smallest/largest |g| ",ming,maxg," spotRadius ",spotRadius," scaling ",ss
             if (rank==0) print *,"run_SimulatedTEM::outputDiffractionPattern info - minmax I_g ",minval(I_g),maxval(I_g)
+
+        !---    change the brightness of the central spot to not overwhelm image
+            I_0 = I_g(0)
+            I_g(0) = 0
+            I_x = maxval(I_g)
+            if ( I_0 > 2*I_x ) then
+                I_g(0) = 2*I_x
+                hide_000 = .true.
+                if (rank==0) print *,"run_SimulatedTEM::outputDiffractionPattern info - reset I(000)=",I_0," to ",2*I_x," to limit dynamic range "
+            else
+                I_g(0) = I_0
+                hide_000 = .false.
+            end if
+
 
 
         !---    construct the image            
@@ -1106,14 +1175,29 @@
             img = 0
             do iy = 0,Nx-1
                 do ix = 0,Nx-1
-                    do ii = lbound(gg,dim=2),nG
-                        dx(1:2) = (/ix,iy/) - ( gg(1:2,ii)*ss + Nx/2 )
+
+                !---    spot 000 special
+                    dx(1:2) = (/ix,iy/) - Nx/2  
+                    dd = norm2(dx)
+                    if (hide_000) then
+                        if ( (dd<=spotRadius).and.(dd>=spotRadius-2) )  img(ix,iy) = I_g(0) 
+                    else 
+                        if (dd<=spotRadius)   img(ix,iy) = I_g(0)   
+                    end if
+
+
+
+                    do ii = 1,nG
+                        dx(1:2) = (/ix,iy/) - Nx/2 - gg(1:2,ii)*ss 
+                        dd = norm2(dx)
                         if (I_g(ii) >= MIN_GREYSCALE) then
-                            if (norm2(dx)<=spotRadius)   img(ix,iy) = I_g(ii) 
-                        else
-                            if (norm2(dx)<=spotRadius/2) img(ix,iy) = MIN_GREYSCALE
+                            if (dd<=spotRadius)   img(ix,iy) = I_g(ii) 
+                        else if (I_g(ii) > 0) then
+                            if (dd<=spotRadius/2) img(ix,iy) = MIN_GREYSCALE                        
                         end if
+                        !if ( (norm2(dx)<=spotRadius).and. (ix==Nx/2).and.(iy==Nx/2) ) print *,"spot centre ",ii,ix,iy,dx,img(ix,iy),I_g(ii)
                     end do
+
                 end do
             end do
 
@@ -1130,8 +1214,9 @@
                         end  do
                     end do
                 end if
-                img = max(0.0d0,min(1.0d0,img))
-                img = img ** (1.0d0/3)      !   gamma correction
+                img = max(1.0d0/65536,min(1.0d0-1.0d0/65536,img))
+                !img = img ** (1.0d0/3)      !   gamma correction
+                !img = log(img)
                 call writePng( trim(prefix)//".diff.png",img,normalise=.true. )
             end if
 

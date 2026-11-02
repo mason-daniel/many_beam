@@ -755,9 +755,9 @@
                         end do
                     end do
                 case( LATTICE_HCP )
-                    do lp = 0,+mm
+                    do lp = -mm,+mm
                         do kp = -mm,+mm
-                            do hp = 0,+mm
+                            do hp = -mm,+mm
                                 rr = floor( (hp+kp)*(hp+kp) + (hp-kp)*(hp-kp)/3 + lp*lp*0.375d0 )
                                 if (rr > rho*rho + 1.0d-6) cycle
                                 
@@ -765,7 +765,7 @@
                                 ok = .not. ( (modulo( hp+2*kp,3 )==0) .and. (mod( abs(lp),2 )==1) )         !   false if h+2k is modulo 3 and l is odd   
                                                             
                                 if (ok) then
-                                    write (*,fmt='(3i4)') hp,kp,lp 
+                                    write (*,fmt='(4i4)') MillerToMillerBravais_plane( (/hp,kp,lp/) )
                                 end if
                                 
                             end do
