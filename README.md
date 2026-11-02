@@ -19,7 +19,7 @@ where the propagation matrix is expressed as the sum of two parts:
 $s_{\mathbf{g}}$,
 and 
 2. propagation through the crystal requires an "on/off" density function 
-$\rho(\vec{r} \in [0,1]$, 
+$\rho(\vec{r}) \in [0,1]$, 
 a complex extinction distance 
 $\xi_{\mathbf{g}}$, 
 and a complex phase factor representing the distortions in the lattice, 
@@ -47,15 +47,15 @@ make
 ## first run
 
 ```
-./bin/run_SimulatedTEM
+./bin/hbtem-cp
 ```
 
-should give a list of runtime options.
+should give a list of runtime options. Boolean flags of the form "-flag" are set to true, and "-noflag" for false. 
 
 ## typical run
 
 ```
-./bin/run_SimulatedTEM -f inputFe.xyz -g 2,0,0 -a0 2.8665 
+./bin/hbtem-cp -f inputFe.xyz -g 2,0,0 -a0 2.8665 
 ```
 
 where inputFe.xyz is an extended xyz format file containing Fe atoms, with an [001] axis in the z-direction, and lattice parameter 2.8665A.
@@ -69,6 +69,33 @@ parcas .xyz
 lammps write_data format
 ```
 TODO: I do not support lammps dump files. This could be vibe coded fairly easily?
+
+##  basic run mode approximations
+
+### columnar approximation
+
+The columnar approximation can be toggled with "-col" or "-nocol". If columnar approx "-col" is invoked, the propagation equation solved is 
+
+```math
+\left( \frac{( \mathbf{k} + \mathbf{g} )}{|\mathbf{k}|}  \cdot \hat{z} \right) \frac{ \partial}{\partial z} \phi_{\mathbf{g}}(\vec{r}) 
+=
+-i\, \sum_{\mathbf{g'}} \mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) \phi_{\mathbf{g'}}(\vec{r}),
+```
+ie the beam spreading in x- and y- is not required to propagate in the z- direction.
+
+### no inelastic electron scattering
+
+Thermal diffusive scattering can be toggled with "-loss" or "-noloss". If the calculation is set to ignore inelastic scattering, the propagation matrix is set to
+```math
+\mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) 
+=
+2 \pi \delta_{\mathbf{g},\mathbf{g'}}  s_{\mathbf{g}}  + \pi  \rho(\vec{r}) \,  \frac{x_{\mathbf{g}-\mathbf{g}'}(\vec{r})}{\mathcal{Re} (\xi_{\mathbf{g}-\mathbf{g}'} ) },
+```
+ie only the real part of the extinction distance is used.
+
+### two beam
+
+Two beam ( dynamical ) conditions can be set with the flag "-2" or many beam with "-no2". In two beam dynamical conditions, only [hkl]=[000] and one other $\mathbf{g}$ vector are propagated. This is much faster than many beam.
 
 
 ## references
