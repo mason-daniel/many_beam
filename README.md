@@ -8,11 +8,11 @@ Expanding the Schrödinger equation to first order in spatial derivatives as a s
 $ \mathbf{k} + \mathbf{g} $,
 gives 
 
-$$
+```math
 \frac{( \mathbf{k} + \mathbf{g} )}{|\mathbf{k}|}  \cdot \nabla \phi_{\mathbf{g}}(\vec{r}) 
 =
 -i\, \sum_{\mathbf{g'}} \mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) \phi_{\mathbf{g'}}(\vec{r})
-$$
+```
 
 where the propagation matrix is expressed as the sum of two parts:
 1. propagation through vacuum is handled by the deviation parameter 
