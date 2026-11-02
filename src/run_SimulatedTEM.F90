@@ -15,7 +15,7 @@
 !*          v.0.0.5         Apr 26      Option to find centre-of-mass in diffraction pattern
 !*          v.0.1.0         May 26      thanks to Aslak Fellman (Helsinki) spotted bug in handling of unknown element type. Change to default op filename for .xyz files. dump .xyz file in tilted position ( serial run only )
 !*          v.0.1.1         Oct 26      tweaks to output of diffraction patterns
-
+!*          v.1.0.0         Nov 26      Major version number 
 
        
         use iso_fortran_env
@@ -41,7 +41,7 @@
         implicit none
 
 
-        character(len=8),parameter          ::      VERSION = "0.1.1"
+        character(len=8),parameter          ::      VERSION = "1.0.0"
 
 
         real(kind=real64),parameter         ::      PI = 3.14159265390d0

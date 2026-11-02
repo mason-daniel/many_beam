@@ -23,9 +23,9 @@ $\rho(\vec{r} \in [0,1]$,
 a complex extinction distance 
 $\xi_{\mathbf{g}}$, 
 and a complex phase factor representing the distortions in the lattice, 
-$x_{\mathbf{g}}(\vec{r}) = \exp[ -i \mathbf{g}.\mathbf{u}(\vec{r}) ]$
-.
+$x_{\mathbf{g}}(\vec{r}) = \exp[ -i \mathbf{g}.\mathbf{u}(\vec{r}) ]$.
 
+The propagation is solved using RK4, with the fields $\rho(\vec{r})$ and $x_{\mathbf{g}}(\vec{r})$ interpolated from atomic positions, and
 ```math
 \mathbf{M}_{\mathbf{g},\mathbf{g'} }(\vec{r}) 
 =
